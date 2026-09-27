@@ -1,23 +1,24 @@
-// Gets today's coach sentence from the coach-sentence Edge Function
+// Gets today's coach message from the coach-sentence Edge Function
 // (supabase/functions/coach-sentence). The function calls Claude, so the
 // Anthropic API key never has to be inside the app.
 
 import { FunctionsHttpError } from "@supabase/supabase-js";
 import { useCallback, useEffect, useState } from "react";
 
+import { localDate } from "@/lib/dates";
 import { supabase } from "@/lib/supabase";
 
-function localDate(d: Date) {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
+export type CoachMessage = {
+  sentence: string;
+  // One line of knowledge behind the advice (missing on older saved messages).
+  why?: string | null;
+};
 
-export async function fetchCoachSentence(): Promise<string> {
-  const now = new Date();
-  const { data, error } = await supabase.functions.invoke<{ sentence: string }>("coach-sentence", {
+export async function fetchCoachMessage(): Promise<CoachMessage> {
+  const { data, error } = await supabase.functions.invoke<CoachMessage>("coach-sentence", {
     body: {
-      date: localDate(now),
-      weekday: now.toLocaleDateString("en-US", { weekday: "long" }),
+      date: localDate(),
+      weekday: new Date().toLocaleDateString("en-US", { weekday: "long" }),
     },
   });
   if (error) {
@@ -29,24 +30,26 @@ export async function fetchCoachSentence(): Promise<string> {
     throw error;
   }
   if (!data?.sentence) throw new Error("The coach returned nothing");
-  return data.sentence;
+  return data;
 }
 
-// `enabled` is false until the journal is finished; the coach needs it first.
-export function useCoachSentence(enabled: boolean) {
-  const [sentence, setSentence] = useState<string | null>(null);
+// `enabled` is false until the coach has what it needs (journal, check-in or skip).
+// `version` changes whenever the check-in is saved, which asks the coach again.
+export function useCoachMessage(enabled: boolean, version: string) {
+  const [message, setMessage] = useState<CoachMessage | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
     setError(null);
-    fetchCoachSentence()
-      .then(setSentence)
+    setMessage(null);
+    fetchCoachMessage()
+      .then(setMessage)
       .catch((e: Error) => setError(e.message));
   }, []);
 
   useEffect(() => {
-    if (enabled && sentence === null) load();
-  }, [enabled, sentence, load]);
+    if (enabled) load();
+  }, [enabled, version, load]);
 
-  return { sentence, error, retry: load };
+  return { message, error, retry: load };
 }

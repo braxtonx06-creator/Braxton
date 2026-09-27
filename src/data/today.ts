@@ -10,20 +10,10 @@ export type TrainingSession = {
   source: "program" | "coach";
 };
 
-export type Readiness = {
-  level: "Low" | "Moderate" | "Good" | "High";
-  sleepHours: number;
-  // Resting HR vs. your normal. Garmin shares this with Apple Health; it does not share HRV.
-  restingHr: number;
-  summary: string;
-};
-
 export type DailyRundown = {
   date: string;
   training: TrainingSession[];
   food: { calories: number; proteinG: number; carbsG: number; fatG: number; note: string };
-  readiness: Readiness;
-  bodyWeightLb: number;
 };
 
 export const placeholderRundown: DailyRundown = {
@@ -49,11 +39,4 @@ export const placeholderRundown: DailyRundown = {
     fatG: 90,
     note: "Carbs higher today: two sessions.",
   },
-  readiness: {
-    level: "Good",
-    sleepHours: 7.3,
-    restingHr: 48,
-    summary: "Recovered enough to train hard. Keep one rep in the tank on the top set.",
-  },
-  bodyWeightLb: 180.4,
 };

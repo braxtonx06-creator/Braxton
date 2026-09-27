@@ -1,20 +1,43 @@
 import { Link, Redirect } from "expo-router";
+import { useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { CheckInCard } from "@/components/CheckInCard";
 import { ErrorState } from "@/components/ErrorState";
 import { colors, radius } from "@/components/theme";
 import { placeholderRundown as today } from "@/data/today";
-import { useCoachSentence } from "@/lib/coach";
+import { useTodayCheckIn } from "@/lib/checkIn";
+import { useCoachMessage } from "@/lib/coach";
 import { useJournal } from "@/lib/journal";
 
 export default function HomeScreen() {
   const { journal, error, reload } = useJournal();
-  const coach = useCoachSentence(!!journal?.completedAt);
-  const { food, readiness } = today;
+  const checkIns = useTodayCheckIn();
+  const [skippedCheckIn, setSkippedCheckIn] = useState(false);
 
-  if (error) return <ErrorState message={error} onRetry={reload} />;
-  if (!journal) return <View style={styles.safe} />;
+  // The coach waits for the morning check-in (or a skip) so it only runs once,
+  // and runs again whenever the check-in is saved.
+  const checkInDone = checkIns.checkIn !== null;
+  const coach = useCoachMessage(
+    !!journal?.completedAt && checkIns.loaded && (checkInDone || skippedCheckIn),
+    checkIns.checkIn?.updatedAt ?? "none",
+  );
+  const { food } = today;
+
+  const loadError = error ?? checkIns.error;
+  if (loadError) {
+    return (
+      <ErrorState
+        message={loadError}
+        onRetry={() => {
+          reload();
+          checkIns.reload();
+        }}
+      />
+    );
+  }
+  if (!journal || !checkIns.loaded) return <View style={styles.safe} />;
   // First open: the coach needs to meet you before it can plan your day.
   if (!journal.completedAt) return <Redirect href="/onboarding" />;
 
@@ -33,11 +56,21 @@ export default function HomeScreen() {
         </View>
         <Text style={styles.title}>{name ? `Today, ${name}` : "Today"}</Text>
 
-        {/* The one coach sentence, written by Claude from your journal */}
+        {/* Before checking in, the check-in card comes first. */}
+        {!checkInDone && !skippedCheckIn && (
+          <CheckInCard checkIn={null} onSaved={checkIns.setCheckIn} onSkip={() => setSkippedCheckIn(true)} />
+        )}
+
+        {/* The coach's sentence and why, written by Claude from your journal and check-in */}
         <View style={styles.coach}>
           <Text style={styles.coachLabel}>COACH</Text>
-          {coach.sentence ? (
-            <Text style={styles.coachText}>{coach.sentence}</Text>
+          {!checkInDone && !skippedCheckIn ? (
+            <Text style={styles.body}>Check in above and I'll tell you how to attack today.</Text>
+          ) : coach.message ? (
+            <>
+              <Text style={styles.coachText}>{coach.message.sentence}</Text>
+              {coach.message.why && <Text style={styles.why}>Why: {coach.message.why}</Text>}
+            </>
           ) : coach.error ? (
             <>
               <Text style={styles.body}>Couldn't reach your coach: {coach.error}</Text>
@@ -53,17 +86,8 @@ export default function HomeScreen() {
           )}
         </View>
 
-        <Section title="Readiness · sample">
-          <View style={styles.row}>
-            <Text style={[styles.big, { color: colors.good }]}>{readiness.level}</Text>
-            <View style={styles.stats}>
-              <Stat label="Sleep" value={`${readiness.sleepHours} h`} />
-              <Stat label="Resting HR" value={`${readiness.restingHr} bpm`} />
-              <Stat label="Weight" value={`${today.bodyWeightLb} lb`} />
-            </View>
-          </View>
-          <Text style={styles.body}>{readiness.summary}</Text>
-        </Section>
+        {/* After checking in, the summary sits under the coach (tap Edit to change it). */}
+        {checkInDone && <CheckInCard checkIn={checkIns.checkIn} onSaved={checkIns.setCheckIn} />}
 
         <Section title="Training · sample">
           {today.training.map((s) => (
@@ -88,7 +112,7 @@ export default function HomeScreen() {
           <Text style={styles.body}>{food.note}</Text>
         </Section>
 
-        <Text style={styles.footer}>Sample data below the coach. Real plans and stats come in later milestones.</Text>
+        <Text style={styles.footer}>Training and food are sample data. Real plans come in later milestones.</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -130,10 +154,10 @@ const styles = StyleSheet.create({
   },
   coachLabel: { color: colors.accent, fontSize: 12, fontWeight: "700", letterSpacing: 1 },
   coachText: { color: colors.text, fontSize: 18, lineHeight: 25, fontWeight: "600" },
+  why: { color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: 2 },
   card: { backgroundColor: colors.card, borderRadius: radius, padding: 16, gap: 10 },
   cardTitle: { color: colors.muted, fontSize: 13, fontWeight: "700", textTransform: "uppercase", letterSpacing: 1 },
   row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
-  big: { fontSize: 28, fontWeight: "800" },
   stats: { flexDirection: "row", gap: 18, flexWrap: "wrap" },
   stat: { gap: 2 },
   statValue: { color: colors.text, fontSize: 17, fontWeight: "700" },

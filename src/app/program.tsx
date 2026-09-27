@@ -16,6 +16,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ErrorState } from "@/components/ErrorState";
 import { SwapBox } from "@/components/SwapBox";
+import { WeekCard } from "@/components/WeekCard";
 import { colors, radius } from "@/components/theme";
 import { loadTodayCheckIn } from "@/lib/checkIn";
 import {
@@ -53,6 +54,8 @@ export default function ProgramScreen() {
   const [swapping, setSwapping] = useState<string | null>(null); // "day:exerciseId"
   const [feedback, setFeedback] = useState("");
   const [swapNote, setSwapNote] = useState<string | null>(null);
+  // The coach needs the user's week before it can swap or revise anything.
+  const [weekSet, setWeekSet] = useState<boolean | null>(null);
 
   const load = useCallback(() => {
     setError(null);
@@ -195,9 +198,12 @@ export default function ProgramScreen() {
       <Text style={styles.title}>{plan.name}</Text>
       <Text style={styles.body}>{plan.summary}</Text>
       <Pressable hitSlop={8} onPress={() => router.push("/goals")}>
-        <Text style={styles.link}>Edit my goals & week ›</Text>
+        <Text style={styles.link}>Edit my goals ›</Text>
       </Pressable>
       {swapNote && <Text style={styles.note}>{swapNote}</Text>}
+      {weekSet === false && (
+        <Text style={styles.warn}>Set your week below first: your coach needs your lifting and MMA days to swap or change anything.</Text>
+      )}
 
       {isRevision && (
         <View style={[styles.card, styles.cardAccent]}>
@@ -316,6 +322,8 @@ export default function ProgramScreen() {
         );
       })}
 
+      <WeekCard onChange={(w) => setWeekSet(w.liftDays.length > 0)} />
+
       {!isRevision && (
         <View style={styles.card}>
           <Text style={styles.cardTitle}>REQUEST CHANGES</Text>
@@ -334,7 +342,7 @@ export default function ProgramScreen() {
           <Button
             label="Send to coach"
             busy={busy === "feedback"}
-            disabled={feedback.trim().length < 5}
+            disabled={feedback.trim().length < 5 || weekSet === false}
             onPress={submitFeedback}
           />
         </View>
@@ -387,6 +395,7 @@ const styles = StyleSheet.create({
   muted: { color: colors.muted, fontSize: 13, lineHeight: 18 },
   quote: { color: colors.text, fontSize: 14, fontStyle: "italic" },
   note: { color: colors.good, fontSize: 14, lineHeight: 20 },
+  warn: { color: colors.accent, fontSize: 14, lineHeight: 20, fontWeight: "600" },
   bullet: { color: colors.text, fontSize: 14, lineHeight: 20 },
   row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 },
   link: { color: colors.accent, fontSize: 14, fontWeight: "600" },

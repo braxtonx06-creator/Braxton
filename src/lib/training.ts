@@ -47,6 +47,22 @@ export async function saveGoals(goals: TrainingGoals) {
   if (error) throw error;
 }
 
+export type Week = Pick<TrainingGoals, "liftDays" | "classDays" | "classTime" | "sessionMinutes">;
+
+// Saves just the weekly schedule (the goals row already exists by now).
+export async function saveWeek(week: Week) {
+  const { error } = await supabase
+    .from("training_goals")
+    .update({
+      lift_days: week.liftDays,
+      class_days: week.classDays,
+      class_time: week.classTime,
+      session_minutes: week.sessionMinutes,
+    })
+    .eq("user_id", await userId());
+  if (error) throw error;
+}
+
 // ---------- Workouts ----------
 
 export type PlanSet = {

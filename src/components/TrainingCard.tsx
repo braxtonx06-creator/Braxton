@@ -205,6 +205,11 @@ function ProgramCard({ summary, checkIn }: { summary: TrainingSummary; checkIn: 
           <Text style={styles.focus}>{revision} ›</Text>
         </Pressable>
       )}
+      {!summary.goals?.liftDays.length && (
+        <Pressable onPress={() => router.push("/goals")}>
+          <Text style={styles.focus}>Set your lifting and MMA days so your coach stops guessing ›</Text>
+        </Pressable>
+      )}
       {day ? (
         <>
           <Text style={styles.heading}>{day.title}</Text>

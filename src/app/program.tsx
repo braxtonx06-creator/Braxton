@@ -194,6 +194,9 @@ export default function ProgramScreen() {
       </Text>
       <Text style={styles.title}>{plan.name}</Text>
       <Text style={styles.body}>{plan.summary}</Text>
+      <Pressable hitSlop={8} onPress={() => router.push("/goals")}>
+        <Text style={styles.link}>Edit my goals & week ›</Text>
+      </Pressable>
       {swapNote && <Text style={styles.note}>{swapNote}</Text>}
 
       {isRevision && (

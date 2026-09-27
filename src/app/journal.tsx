@@ -5,22 +5,27 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { colors, radius } from "@/components/theme";
 import { onboardingQuestions as questions } from "@/data/onboarding";
 import { deleteJournal, useJournal } from "@/lib/journal";
+import { supabase } from "@/lib/supabase";
 
 // Shows what the coach knows about the user, with options to redo or delete it.
 export default function JournalScreen() {
-  const { journal } = useJournal();
+  const { journal, error } = useJournal();
 
   const confirmDelete = () => {
     const doDelete = async () => {
-      await deleteJournal();
-      router.replace("/onboarding");
+      try {
+        await deleteJournal();
+        router.replace("/onboarding");
+      } catch (e) {
+        Alert.alert("Couldn't delete", (e as Error).message);
+      }
     };
     // Alert.alert has no buttons on web, so fall back to the browser's confirm there.
     if (Platform.OS === "web") {
       if (window.confirm("Delete all your journal answers?")) doDelete();
       return;
     }
-    Alert.alert("Delete your journal?", "This removes all your answers from this phone.", [
+    Alert.alert("Delete your journal?", "This permanently removes all your answers.", [
       { text: "Cancel", style: "cancel" },
       { text: "Delete", style: "destructive", onPress: doDelete },
     ]);
@@ -35,6 +40,7 @@ export default function JournalScreen() {
         <Text style={styles.title}>Your journal</Text>
         <Text style={styles.muted}>What your coach knows about you so far.</Text>
 
+        {error && <Text style={styles.error}>Couldn't load your journal: {error}</Text>}
         {journal &&
           questions.map((q) => (
             <View key={q.id} style={styles.card}>
@@ -50,6 +56,10 @@ export default function JournalScreen() {
         </Pressable>
         <Pressable style={[styles.button, styles.delete]} onPress={confirmDelete}>
           <Text style={styles.deleteText}>Delete my journal</Text>
+        </Pressable>
+        {/* Signing out flips the root layout's guard, which shows the sign-in screen. */}
+        <Pressable style={styles.button} onPress={() => supabase.auth.signOut()}>
+          <Text style={styles.signOutText}>Sign out</Text>
         </Pressable>
       </ScrollView>
     </SafeAreaView>
@@ -70,4 +80,6 @@ const styles = StyleSheet.create({
   editText: { color: colors.text, fontSize: 16, fontWeight: "600" },
   delete: { borderWidth: 1, borderColor: "#7F1D1D" },
   deleteText: { color: "#F87171", fontSize: 16, fontWeight: "600" },
+  signOutText: { color: colors.muted, fontSize: 16, fontWeight: "600" },
+  error: { color: "#F87171", fontSize: 14 },
 });

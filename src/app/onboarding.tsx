@@ -1,5 +1,5 @@
 import { router } from "expo-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { ErrorState } from "@/components/ErrorState";
 import { colors, radius } from "@/components/theme";
 import { onboardingQuestions as questions } from "@/data/onboarding";
 import { Journal, loadJournal, saveJournal } from "@/lib/journal";
@@ -18,35 +19,52 @@ import { Journal, loadJournal, saveJournal } from "@/lib/journal";
 export default function OnboardingScreen() {
   const [journal, setJournal] = useState<Journal | null>(null);
   const [index, setIndex] = useState(0);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   // Resume where the user left off: the first unanswered question.
-  useEffect(() => {
-    loadJournal().then((j) => {
-      setJournal(j);
-      const firstEmpty = questions.findIndex((q) => !j.answers[q.id]?.trim());
-      setIndex(firstEmpty === -1 || j.completedAt ? 0 : firstEmpty);
-    });
+  const load = useCallback(() => {
+    setLoadError(null);
+    loadJournal()
+      .then((j) => {
+        setJournal(j);
+        const firstEmpty = questions.findIndex((q) => !j.answers[q.id]?.trim());
+        setIndex(firstEmpty === -1 || j.completedAt ? 0 : firstEmpty);
+      })
+      .catch((e: Error) => setLoadError(e.message));
   }, []);
 
+  useEffect(load, [load]);
+
+  if (loadError) return <ErrorState message={loadError} onRetry={load} />;
   if (!journal) return <View style={styles.safe} />;
 
   const question = questions[index];
   const answer = journal.answers[question.id] ?? "";
   const isLast = index === questions.length - 1;
-  const canContinue = !question.required || answer.trim().length > 0;
+  const canContinue = (!question.required || answer.trim().length > 0) && !saving;
 
   const setAnswer = (text: string) =>
     setJournal({ ...journal, answers: { ...journal.answers, [question.id]: text } });
 
   // Save after every step so closing the app never loses answers.
   const next = async () => {
-    if (isLast) {
-      await saveJournal({ ...journal, completedAt: new Date().toISOString() });
-      // Return to the home screen if it's underneath us, otherwise open it.
-      router.dismissTo("/");
-    } else {
-      await saveJournal(journal);
-      setIndex(index + 1);
+    setSaving(true);
+    setSaveError(null);
+    try {
+      if (isLast) {
+        await saveJournal({ ...journal, completedAt: new Date().toISOString() });
+        // Return to the home screen if it's underneath us, otherwise open it.
+        router.dismissTo("/");
+      } else {
+        await saveJournal(journal);
+        setIndex(index + 1);
+      }
+    } catch (e) {
+      setSaveError(`Couldn't save: ${(e as Error).message}`);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -77,6 +95,7 @@ export default function OnboardingScreen() {
             returnKeyType={question.short ? "next" : "default"}
             onSubmitEditing={question.short && canContinue ? next : undefined}
           />
+          {saveError && <Text style={styles.error}>{saveError}</Text>}
         </View>
 
         <View style={styles.buttons}>
@@ -128,4 +147,5 @@ const styles = StyleSheet.create({
   secondaryText: { color: colors.text, fontSize: 17, fontWeight: "600" },
   disabled: { opacity: 0.4 },
   hidden: { opacity: 0 },
+  error: { color: "#F87171", fontSize: 14 },
 });

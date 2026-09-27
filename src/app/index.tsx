@@ -2,14 +2,16 @@ import { Link, Redirect } from "expo-router";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { ErrorState } from "@/components/ErrorState";
 import { colors, radius } from "@/components/theme";
 import { placeholderRundown as today } from "@/data/today";
 import { useJournal } from "@/lib/journal";
 
 export default function HomeScreen() {
-  const { journal } = useJournal();
+  const { journal, error, reload } = useJournal();
   const { food, readiness } = today;
 
+  if (error) return <ErrorState message={error} onRetry={reload} />;
   if (!journal) return <View style={styles.safe} />;
   // First open: the coach needs to meet you before it can plan your day.
   if (!journal.completedAt) return <Redirect href="/onboarding" />;

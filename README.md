@@ -1,24 +1,29 @@
-# Braxton OS
+# Personal O.S
 
-A personal operating system that runs in the browser: one place for memory, goals, projects, tasks, habits and notes.
+An AI coach for training, nutrition, sleep, recovery and body weight that tells you **what to do today and why**. The full product brief is in [`CLAUDE.md`](CLAUDE.md).
 
-## Run it
+Built with Expo (React Native), Expo Router and TypeScript. iPhone first.
 
-Open `index.html` in a browser. You don't need to build or install anything. It also works on GitHub Pages.
+## Run it on your phone
 
-## Where data lives
+1. Install **Expo Go** from the App Store.
+2. On your computer, install [Node.js](https://nodejs.org) (LTS), then:
+   ```bash
+   npm install
+   npx expo start
+   ```
+3. Scan the QR code with the iPhone camera. The app opens in Expo Go and reloads whenever you save a file.
 
-- **`data/os-data.js`**: the seed "memory" the app starts from. Keep it in the repo as the permanent record.
-- **Browser storage**: your edits are saved in this browser automatically.
-- **Export data**: downloads an updated `os-data.js`. Replace `data/os-data.js` with it and commit to save your changes to the repo.
-- **Import file**: loads an exported file on another device or browser.
-
-## Importing memory from another AI
-
-In the **Memory** tab, paste the memory export into **Import memory**. The parser understands:
+## Project layout
 
 ```
-## About me          <- heading becomes the category
-- Lives in Texas     <- bullet becomes an entry
-Work: Building X     <- "Category: fact" becomes an entry in that category
+src/app/          screens (each file is a route; _layout.tsx wraps them)
+src/components/   shared UI and theme
+src/data/         data for the screens (placeholder for now)
+```
+
+## Checks
+
+```bash
+npm run typecheck
 ```

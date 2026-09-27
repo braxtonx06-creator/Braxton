@@ -5,15 +5,18 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { CheckInCard } from "@/components/CheckInCard";
 import { ErrorState } from "@/components/ErrorState";
+import { TrainingCard } from "@/components/TrainingCard";
 import { colors, radius } from "@/components/theme";
 import { placeholderRundown as today } from "@/data/today";
 import { useTodayCheckIn } from "@/lib/checkIn";
 import { useCoachMessage } from "@/lib/coach";
 import { useJournal } from "@/lib/journal";
+import { useTrainingSummary } from "@/lib/training";
 
 export default function HomeScreen() {
   const { journal, error, reload } = useJournal();
   const checkIns = useTodayCheckIn();
+  const training = useTrainingSummary();
   const [skippedCheckIn, setSkippedCheckIn] = useState(false);
 
   // The coach waits for the morning check-in (or a skip) so it only runs once,
@@ -25,7 +28,7 @@ export default function HomeScreen() {
   );
   const { food } = today;
 
-  const loadError = error ?? checkIns.error;
+  const loadError = error ?? checkIns.error ?? training.error;
   if (loadError) {
     return (
       <ErrorState
@@ -33,11 +36,12 @@ export default function HomeScreen() {
         onRetry={() => {
           reload();
           checkIns.reload();
+          training.reload();
         }}
       />
     );
   }
-  if (!journal || !checkIns.loaded) return <View style={styles.safe} />;
+  if (!journal || !checkIns.loaded || !training.summary) return <View style={styles.safe} />;
   // First open: the coach needs to meet you before it can plan your day.
   if (!journal.completedAt) return <Redirect href="/onboarding" />;
 
@@ -89,18 +93,7 @@ export default function HomeScreen() {
         {/* After checking in, the summary sits under the coach (tap Edit to change it). */}
         {checkInDone && <CheckInCard checkIn={checkIns.checkIn} onSaved={checkIns.setCheckIn} />}
 
-        <Section title="Training · sample">
-          {today.training.map((s) => (
-            <View key={s.title} style={styles.session}>
-              <View style={styles.row}>
-                <Text style={styles.sessionTime}>{s.time}</Text>
-                {s.source === "coach" && <Text style={styles.tag}>IN PERSON</Text>}
-              </View>
-              <Text style={styles.sessionTitle}>{s.title}</Text>
-              <Text style={styles.body}>{s.detail}</Text>
-            </View>
-          ))}
-        </Section>
+        <TrainingCard summary={training.summary} />
 
         <Section title="Food · sample">
           <View style={styles.stats}>
@@ -112,7 +105,7 @@ export default function HomeScreen() {
           <Text style={styles.body}>{food.note}</Text>
         </Section>
 
-        <Text style={styles.footer}>Training and food are sample data. Real plans come in later milestones.</Text>
+        <Text style={styles.footer}>Food is sample data for now. Meal logging comes in a later milestone.</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -157,25 +150,10 @@ const styles = StyleSheet.create({
   why: { color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: 2 },
   card: { backgroundColor: colors.card, borderRadius: radius, padding: 16, gap: 10 },
   cardTitle: { color: colors.muted, fontSize: 13, fontWeight: "700", textTransform: "uppercase", letterSpacing: 1 },
-  row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   stats: { flexDirection: "row", gap: 18, flexWrap: "wrap" },
   stat: { gap: 2 },
   statValue: { color: colors.text, fontSize: 17, fontWeight: "700" },
   statLabel: { color: colors.muted, fontSize: 12 },
   body: { color: colors.muted, fontSize: 15, lineHeight: 21 },
-  session: { gap: 4, paddingVertical: 6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
-  sessionTime: { color: colors.accent, fontSize: 13, fontWeight: "700" },
-  sessionTitle: { color: colors.text, fontSize: 17, fontWeight: "700" },
-  tag: {
-    color: colors.coachTag,
-    fontSize: 11,
-    fontWeight: "700",
-    borderWidth: 1,
-    borderColor: colors.coachTag,
-    borderRadius: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    overflow: "hidden",
-  },
   footer: { color: colors.muted, fontSize: 12, textAlign: "center", marginTop: 8 },
 });

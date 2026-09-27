@@ -30,6 +30,8 @@ function RootStack() {
         <Stack.Screen name="index" />
         <Stack.Screen name="onboarding" />
         <Stack.Screen name="journal" />
+        <Stack.Screen name="goals" />
+        <Stack.Screen name="workout/[id]" />
       </Stack.Protected>
       <Stack.Protected guard={!signedIn}>
         <Stack.Screen name="sign-in" />

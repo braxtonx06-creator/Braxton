@@ -50,12 +50,12 @@ export async function saveJournal(journal: Journal): Promise<void> {
   if (error) throw error;
 }
 
-// Deletes everything the coach knows: journal, check-ins and past coach messages.
+// Deletes everything the coach knows: journal, check-ins, coach messages and training data.
 export async function deleteJournal(): Promise<void> {
   const userId = await currentUserId();
   const { error } = await supabase.from("journals").delete().eq("user_id", userId);
   if (error) throw error;
-  for (const table of ["check_ins", "coach_messages"]) {
+  for (const table of ["check_ins", "coach_messages", "baselines", "workouts", "training_goals"]) {
     const { error: tableError } = await supabase.from(table).delete().eq("user_id", userId);
     if (tableError) throw tableError;
   }

@@ -1,0 +1,357 @@
+import { router, useLocalSearchParams } from "expo-router";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+
+import { ErrorState } from "@/components/ErrorState";
+import { RestTimer } from "@/components/RestTimer";
+import { colors, radius } from "@/components/theme";
+import {
+  completeWorkout,
+  computeResults,
+  loadWorkout,
+  PlanExercise,
+  Result,
+  saveWorkoutLog,
+  SetLog,
+  setKey,
+  Workout,
+  WorkoutLog,
+} from "@/lib/training";
+
+// The whole workout on one screen: every exercise and set is visible, and you
+// fill in what you did as you go. Ticking a set saves it and starts the rest timer.
+export default function WorkoutScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const [workout, setWorkout] = useState<Workout | null>(null);
+  const [log, setLog] = useState<WorkoutLog>({});
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [restEndsAt, setRestEndsAt] = useState<number | null>(null);
+  const [finishing, setFinishing] = useState(false);
+  const [results, setResults] = useState<Result[] | null>(null);
+  const started = useRef(false);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const load = useCallback(() => {
+    setLoadError(null);
+    loadWorkout(id)
+      .then((w) => {
+        setWorkout(w);
+        setLog(w.log ?? {});
+        started.current = w.status !== "planned";
+        if (w.status === "completed") setResults(computeResults(w.plan, w.log));
+      })
+      .catch((e: Error) => setLoadError(e.message));
+  }, [id]);
+
+  useEffect(load, [load]);
+
+  // Save shortly after typing stops, and right away when a set is ticked.
+  const persist = useCallback(
+    (next: WorkoutLog, immediately: boolean) => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      const run = () => {
+        const first = !started.current;
+        started.current = true;
+        saveWorkoutLog(id, next, first)
+          .then(() => setSaveError(null))
+          .catch((e: Error) => setSaveError(`Not saved: ${e.message}`));
+      };
+      if (immediately) run();
+      else saveTimer.current = setTimeout(run, 800);
+    },
+    [id],
+  );
+
+  if (loadError) return <ErrorState message={loadError} onRetry={load} />;
+  if (!workout) {
+    return (
+      <View style={[styles.safe, styles.center]}>
+        <ActivityIndicator color={colors.accent} />
+      </View>
+    );
+  }
+
+  const completed = workout.status === "completed";
+  const totalSets = workout.plan.exercises.reduce((n, ex) => n + ex.sets.length, 0);
+  const doneSets = Object.values(log).filter((s) => s.done).length;
+
+  const update = (key: string, patch: Partial<SetLog>, immediately = false) => {
+    const next = { ...log, [key]: { ...log[key], ...patch } };
+    setLog(next);
+    persist(next, immediately);
+  };
+
+  const toggleDone = (ex: PlanExercise, index: number) => {
+    const key = setKey(ex.id, index);
+    const set = ex.sets[index];
+    const entry = log[key] ?? {};
+    if (entry.done) return update(key, { done: false }, true);
+    // Blank boxes count as the suggestion, so tapping ✓ on a set done as written is enough.
+    update(
+      key,
+      {
+        done: true,
+        weight: entry.weight || (set.suggestedWeight ? String(set.suggestedWeight) : entry.weight),
+        reps: entry.reps || (set.targetReps ? String(set.targetReps) : entry.reps),
+      },
+      true,
+    );
+    if (ex.restSeconds > 0) setRestEndsAt(Date.now() + ex.restSeconds * 1000);
+  };
+
+  const finish = async () => {
+    const doIt = async () => {
+      setFinishing(true);
+      try {
+        if (saveTimer.current) clearTimeout(saveTimer.current);
+        const r = await completeWorkout(workout, log);
+        setResults(r);
+        setWorkout({ ...workout, status: "completed" });
+        setRestEndsAt(null);
+      } catch (e) {
+        setSaveError(`Couldn't finish: ${(e as Error).message}`);
+      } finally {
+        setFinishing(false);
+      }
+    };
+    const message =
+      doneSets < totalSets
+        ? `You've ticked ${doneSets} of ${totalSets} sets. Finish anyway?`
+        : "Save your results?";
+    if (Platform.OS === "web") {
+      if (window.confirm(message)) doIt();
+      return;
+    }
+    Alert.alert("Finish workout", message, [
+      { text: "Keep going", style: "cancel" },
+      { text: "Finish", onPress: doIt },
+    ]);
+  };
+
+  return (
+    <SafeAreaView style={styles.safe} edges={["top"]}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}>
+            <Text style={styles.back}>‹ Today</Text>
+          </Pressable>
+          <Text style={styles.kicker}>{workout.kind === "test" ? "TESTING WORKOUT" : "WORKOUT"}</Text>
+          <Text style={styles.title}>{workout.plan.title}</Text>
+          {!completed && <Text style={styles.muted}>{workout.plan.intro}</Text>}
+
+          {results && <ResultsCard results={results} />}
+
+          {!completed && (
+            <Text style={styles.progress}>
+              {doneSets} of {totalSets} sets done
+            </Text>
+          )}
+
+          {workout.plan.exercises.map((ex) => (
+            <View key={ex.id} style={styles.card}>
+              <Text style={styles.exName}>{ex.name}</Text>
+              {!completed && <Text style={styles.instructions}>{ex.instructions}</Text>}
+              {ex.restSeconds > 0 && !completed && (
+                <Text style={styles.rest}>
+                  Rest {Math.floor(ex.restSeconds / 60)}:{String(ex.restSeconds % 60).padStart(2, "0")} between sets
+                </Text>
+              )}
+              {ex.sets.map((set, i) => {
+                const key = setKey(ex.id, i);
+                const entry = log[key] ?? {};
+                return (
+                  <View key={key} style={[styles.setRow, entry.done && styles.setDone]}>
+                    <View style={styles.setHeader}>
+                      <Text style={[styles.setLabel, set.isTest && styles.testLabel]}>{set.label}</Text>
+                      <Text style={styles.setTarget}>{set.target}</Text>
+                    </View>
+                    <View style={styles.inputs}>
+                      {ex.kind === "strength" ? (
+                        <>
+                          <NumberBox
+                            label="lb"
+                            value={entry.weight}
+                            placeholder={set.suggestedWeight ? String(set.suggestedWeight) : "–"}
+                            editable={!completed}
+                            onChange={(t) => update(key, { weight: t })}
+                          />
+                          <NumberBox
+                            label="reps"
+                            value={entry.reps}
+                            placeholder={set.targetReps ? String(set.targetReps) : "–"}
+                            editable={!completed}
+                            onChange={(t) => update(key, { reps: t })}
+                          />
+                          <NumberBox
+                            label="RPE"
+                            value={entry.rpe}
+                            placeholder={set.isTest ? "9" : "–"}
+                            editable={!completed}
+                            onChange={(t) => update(key, { rpe: t })}
+                          />
+                        </>
+                      ) : (
+                        <NumberBox
+                          label={ex.unit}
+                          value={entry.value}
+                          placeholder="–"
+                          wide
+                          editable={!completed}
+                          onChange={(t) => update(key, { value: t })}
+                        />
+                      )}
+                      <Pressable
+                        style={[styles.doneButton, entry.done && styles.doneButtonOn]}
+                        disabled={completed}
+                        onPress={() => toggleDone(ex, i)}
+                        accessibilityLabel={`${ex.name} ${set.label} done`}
+                      >
+                        <Text style={[styles.doneText, entry.done && styles.doneTextOn]}>✓</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          ))}
+
+          {saveError && <Text style={styles.error}>{saveError}</Text>}
+
+          {!completed && (
+            <Pressable style={[styles.finish, finishing && styles.disabled]} disabled={finishing} onPress={finish}>
+              {finishing ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.finishText}>{workout.kind === "test" ? "Finish test" : "Finish workout"}</Text>
+              )}
+            </Pressable>
+          )}
+          <Text style={styles.muted}>
+            RPE = how hard the set was: 10 is nothing left, 9 is one rep left in the tank, 8 is two left.
+          </Text>
+        </ScrollView>
+      </KeyboardAvoidingView>
+      <RestTimer endsAt={restEndsAt} onChange={setRestEndsAt} />
+    </SafeAreaView>
+  );
+}
+
+function NumberBox({
+  label,
+  value,
+  placeholder,
+  editable,
+  wide,
+  onChange,
+}: {
+  label: string;
+  value?: string;
+  placeholder: string;
+  editable: boolean;
+  wide?: boolean;
+  onChange: (text: string) => void;
+}) {
+  return (
+    <View style={[styles.box, wide && styles.boxWide]}>
+      <TextInput
+        style={styles.boxInput}
+        value={value ?? ""}
+        onChangeText={(t) => onChange(t.replace(/[^0-9.,]/g, ""))}
+        placeholder={placeholder}
+        placeholderTextColor={colors.muted}
+        keyboardType="decimal-pad"
+        editable={editable}
+        selectTextOnFocus
+      />
+      <Text style={styles.boxLabel}>{label}</Text>
+    </View>
+  );
+}
+
+function ResultsCard({ results }: { results: Result[] }) {
+  return (
+    <View style={[styles.card, styles.resultsCard]}>
+      <Text style={styles.kicker}>YOUR NUMBERS</Text>
+      {results.length ? (
+        results.map((r) => (
+          <View key={r.metric} style={styles.resultRow}>
+            <Text style={styles.resultName}>{r.name}</Text>
+            <Text style={styles.resultValue}>
+              {r.value} <Text style={styles.resultUnit}>{r.unit}</Text>
+            </Text>
+          </View>
+        ))
+      ) : (
+        <Text style={styles.muted}>No sets were ticked, so there are no numbers yet.</Text>
+      )}
+      <Text style={styles.muted}>Your coach will build your program from these.</Text>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: colors.bg },
+  center: { alignItems: "center", justifyContent: "center" },
+  content: { padding: 20, gap: 12, paddingBottom: 140 },
+  back: { color: colors.accent, fontSize: 16, fontWeight: "600" },
+  kicker: { color: colors.accent, fontSize: 12, fontWeight: "800", letterSpacing: 1 },
+  title: { color: colors.text, fontSize: 28, fontWeight: "800" },
+  muted: { color: colors.muted, fontSize: 14, lineHeight: 20 },
+  progress: { color: colors.text, fontSize: 14, fontWeight: "700" },
+  card: { backgroundColor: colors.card, borderRadius: radius, padding: 14, gap: 8 },
+  exName: { color: colors.text, fontSize: 19, fontWeight: "800" },
+  instructions: { color: colors.muted, fontSize: 14, lineHeight: 20 },
+  rest: { color: colors.accent, fontSize: 13, fontWeight: "600" },
+  setRow: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: 8, gap: 6 },
+  setDone: { opacity: 0.55 },
+  setHeader: { flexDirection: "row", gap: 8, alignItems: "baseline", flexWrap: "wrap" },
+  setLabel: { color: colors.text, fontSize: 14, fontWeight: "700" },
+  testLabel: { color: colors.accent },
+  setTarget: { color: colors.muted, fontSize: 13, flexShrink: 1 },
+  inputs: { flexDirection: "row", gap: 8, alignItems: "center" },
+  box: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: colors.bg,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+  },
+  boxWide: { flex: 3 },
+  boxInput: { flex: 1, color: colors.text, fontSize: 18, fontWeight: "700", paddingVertical: 10, minWidth: 0 },
+  boxLabel: { color: colors.muted, fontSize: 12 },
+  doneButton: {
+    width: 46,
+    height: 46,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: colors.line,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  doneButtonOn: { backgroundColor: colors.good, borderColor: colors.good },
+  doneText: { color: colors.muted, fontSize: 20, fontWeight: "800" },
+  doneTextOn: { color: "#0E0F12" },
+  finish: { backgroundColor: colors.accent, borderRadius: radius, paddingVertical: 16, alignItems: "center", marginTop: 8 },
+  finishText: { color: "#fff", fontSize: 17, fontWeight: "700" },
+  disabled: { opacity: 0.4 },
+  error: { color: "#F87171", fontSize: 14 },
+  resultsCard: { borderWidth: 1, borderColor: colors.accent },
+  resultRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline" },
+  resultName: { color: colors.text, fontSize: 16, fontWeight: "600", flexShrink: 1 },
+  resultValue: { color: colors.text, fontSize: 20, fontWeight: "800" },
+  resultUnit: { color: colors.muted, fontSize: 12, fontWeight: "600" },
+});

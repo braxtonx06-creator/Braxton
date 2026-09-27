@@ -69,6 +69,14 @@ export const isoWeekday = (d = new Date()) => ((d.getDay() + 6) % 7) + 1;
 
 const COLUMNS = "id, status, name, plan, starts_on, revision_of, request, error, created_at";
 
+// The coach's server stops any job after 2.5 minutes, so a program still
+// "generating" after 4 minutes was cut off and will never finish.
+const STUCK_AFTER_MS = 4 * 60_000;
+const unstick = (p: Program): Program =>
+  p.status === "generating" && Date.now() - Date.parse(p.created_at) > STUCK_AFTER_MS
+    ? { ...p, status: "failed", error: "Your coach got cut off while writing this. Try again." }
+    : p;
+
 // ---------- Loading ----------
 
 // The active program, plus the newest program that's being written, waiting
@@ -80,7 +88,7 @@ export async function loadProgramState(): Promise<{ active: Program | null; pend
     .in("status", ["active", "draft", "generating", "failed"])
     .order("created_at", { ascending: false });
   if (error) throw error;
-  const rows = (data ?? []) as Program[];
+  const rows = ((data ?? []) as Program[]).map(unstick);
   const active = rows.find((p) => p.status === "active") ?? null;
   const newest = rows.find((p) => p.status !== "active") ?? null;
   // A failed attempt older than the active program is history, not news.
@@ -92,7 +100,7 @@ export async function loadProgramState(): Promise<{ active: Program | null; pend
 export async function loadProgram(id: string): Promise<Program> {
   const { data, error } = await supabase.from("programs").select(COLUMNS).eq("id", id).single();
   if (error) throw error;
-  return data as Program;
+  return unstick(data as Program);
 }
 
 export async function loadProgramWorkouts(programId: string): Promise<ProgramWorkoutRef[]> {

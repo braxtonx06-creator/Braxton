@@ -10,10 +10,15 @@
 // - { mode: "revise", programId, feedback }      rewrite a program from the user's feedback
 // - { mode: "swap", programId, dayOfWeek, exerciseId, reason }  replace one exercise
 //
-// "new" and "revise" take about a minute, longer than a phone keeps a request
+// "new" and "revise" take a minute or two, longer than a phone keeps a request
 // open, so they save a 'generating' row, reply at once, and finish in the
 // background (EdgeRuntime.waitUntil). The app polls the row until it's a
 // 'draft' (or 'failed'). "swap" is small and answers directly.
+//
+// Supabase stops a function after 150 seconds, and one call writing a whole
+// program can take longer. So a program is written in two stages: first the
+// plan for the block (weeks, days and what each day is for), then every day's
+// exercises at the same time, one call per day.
 
 import Anthropic from "npm:@anthropic-ai/sdk";
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2";
@@ -92,7 +97,7 @@ const EXERCISE_SCHEMA = {
   additionalProperties: false,
 };
 
-const PROGRAM_PROPERTIES = {
+const BLOCK_PROPERTIES = {
   name: { type: "string" },
   summary: { type: "string" },
   rationale: { type: "array", items: { type: "string" } },
@@ -105,34 +110,59 @@ const PROGRAM_PROPERTIES = {
       additionalProperties: false,
     },
   },
-  days: {
-    type: "array",
-    items: {
-      type: "object",
-      properties: {
-        dayOfWeek: { type: "integer" },
-        title: { type: "string" },
-        timing: { type: "string" },
-        purpose: { type: "string" },
-        exercises: { type: "array", items: EXERCISE_SCHEMA },
-      },
-      required: ["dayOfWeek", "title", "timing", "purpose", "exercises"],
-      additionalProperties: false,
-    },
-  },
+};
+const DAY_PLAN_PROPERTIES = {
+  dayOfWeek: { type: "integer" },
+  title: { type: "string" },
+  timing: { type: "string" },
+  purpose: { type: "string" },
+  plan: { type: "string" },
 };
 
-const PROGRAM_SCHEMA = {
+// Stage 1: the block, with an outline of each day instead of its exercises.
+const BLOCK_SCHEMA = {
   type: "object",
-  properties: PROGRAM_PROPERTIES,
+  properties: {
+    ...BLOCK_PROPERTIES,
+    days: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: DAY_PLAN_PROPERTIES,
+        required: Object.keys(DAY_PLAN_PROPERTIES),
+        additionalProperties: false,
+      },
+    },
+  },
   required: ["name", "summary", "rationale", "weeks", "days"],
   additionalProperties: false,
 };
 
-const REVISION_SCHEMA = {
+// A revision also says what changed, and which days need rewriting.
+const REVISION_BLOCK_SCHEMA = {
   type: "object",
-  properties: { ...PROGRAM_PROPERTIES, changes: { type: "array", items: { type: "string" } } },
+  properties: {
+    ...BLOCK_PROPERTIES,
+    changes: { type: "array", items: { type: "string" } },
+    days: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: { ...DAY_PLAN_PROPERTIES, rewrite: { type: "boolean" } },
+        required: [...Object.keys(DAY_PLAN_PROPERTIES), "rewrite"],
+        additionalProperties: false,
+      },
+    },
+  },
   required: ["name", "summary", "rationale", "weeks", "days", "changes"],
+  additionalProperties: false,
+};
+
+// Stage 2: one day's exercises.
+const DAY_SCHEMA = {
+  type: "object",
+  properties: { exercises: { type: "array", items: EXERCISE_SCHEMA } },
+  required: ["exercises"],
   additionalProperties: false,
 };
 
@@ -160,6 +190,8 @@ type ProgramExercise = {
   notes: string;
 };
 type ProgramDay = { dayOfWeek: number; title: string; timing: string; purpose: string; exercises: ProgramExercise[] };
+type DayPlan = { dayOfWeek: number; title: string; timing: string; purpose: string; plan: string; rewrite?: boolean };
+type Block = Omit<Program, "days"> & { days: DayPlan[] };
 type Program = {
   name: string;
   summary: string;
@@ -292,10 +324,10 @@ async function loadContext(supabase: SupabaseClient): Promise<Context | string> 
 
 // ---------- Claude ----------
 
-async function askClaude(anthropic: Anthropic, schema: Record<string, unknown>, prompt: string) {
+async function askClaude(anthropic: Anthropic, schema: Record<string, unknown>, prompt: string, maxTokens = 12000) {
   const response = await anthropic.beta.messages.create({
     model: MODEL,
-    max_tokens: 20000,
+    max_tokens: maxTokens,
     // If a safety classifier declines, retry server-side on Anthropic's recommended model.
     betas: ["server-side-fallback-2026-07-01"],
     fallbacks: "default",
@@ -318,17 +350,77 @@ function friendlyError(error: unknown): { message: string; status: number } {
   return { message: "Something went wrong, try again", status: 500 };
 }
 
-// Writes the program in the background and stores the outcome on the row.
-async function generateInto(
-  supabase: SupabaseClient,
+const BLOCK_TASK = `Plan the block first. For each training day give its dayOfWeek, title, timing, purpose, and in "plan" a compact outline of the session in order (e.g. "A1 trap bar jump 4x3 / A2 ankle hops; B main: bench 4x5 RPE 8; C1 DB row / C2 push-up superset; finisher: air bike alactic 8x8s"). Another coach will write each day's exact exercises from your outline, so make the weekly picture (volume per muscle group, fatigue around class) add up across the days.`;
+
+function dayTask(block: Block, day: DayPlan) {
+  const outline = block.days.map((d) => `- ${WEEKDAYS[d.dayOfWeek]}: ${d.title}. ${d.purpose} Outline: ${d.plan}`).join("\n");
+  return `The block "${block.name}": ${block.summary}\nWeeks: ${block.weeks.map((w) => `${w.week}: ${w.focus} (RPE shift ${w.rpeShift})`).join("; ")}\nThe week's training days:\n${outline}\n\nWrite the exercises for ${WEEKDAYS[day.dayOfWeek]} only ("${day.title}", ${day.timing}), following its outline, in session order, with sets, reps, target RPE, rest, supersets and a purpose for each.`;
+}
+
+// Stage 2: every day's exercises at once, merged into the finished program.
+async function writeDays(
   anthropic: Anthropic,
-  rowId: string,
   ctx: Context,
-  prompt: string,
-  schema: Record<string, unknown>,
-) {
+  block: Block,
+  extra: (day: DayPlan) => string,
+  keep: (day: DayPlan) => ProgramExercise[] | null,
+): Promise<Program> {
+  const allowed = new Set(ctx.liftDays);
+  const dayPlans = block.days.filter((d) => allowed.has(d.dayOfWeek));
+  const days = await Promise.all(
+    dayPlans.map(async (d): Promise<ProgramDay> => {
+      const kept = keep(d);
+      const exercises =
+        kept ??
+        ((await askClaude(anthropic, DAY_SCHEMA, `${ctx.text}\n\n${dayTask(block, d)}${extra(d)}`, 8000)) as {
+          exercises: ProgramExercise[];
+        }).exercises;
+      return { dayOfWeek: d.dayOfWeek, title: d.title, timing: d.timing, purpose: d.purpose, exercises };
+    }),
+  );
+  return cleanProgram({ ...block, days }, ctx.metrics, ctx.liftDays);
+}
+
+async function writeProgram(anthropic: Anthropic, ctx: Context): Promise<Program> {
+  const block = (await askClaude(anthropic, BLOCK_SCHEMA, `${ctx.text}\n\nThey need a 4-week program. ${BLOCK_TASK}`, 6000)) as Block;
+  return writeDays(anthropic, ctx, block, () => "", () => null);
+}
+
+async function reviseProgram(anthropic: Anthropic, ctx: Context, current: Program, feedback: string): Promise<Program> {
+  const outline = current.days
+    .map((d) => `- ${WEEKDAYS[d.dayOfWeek]}: ${d.title}. ${d.purpose}\n  ${d.exercises.map((e) => `${e.group ? `${e.group} ` : ""}${e.name} ${e.sets}x${e.reps || e.target}`).join("; ")}`)
+    .join("\n");
+  const block = (await askClaude(
+    anthropic,
+    REVISION_BLOCK_SCHEMA,
+    `${ctx.text}\n\nTheir current program "${current.name}": ${current.summary}\nRationale: ${(current.rationale ?? []).join(" ")}\nWeeks: ${current.weeks.map((w) => `${w.week}: ${w.focus} (${w.rpeShift})`).join("; ")}\nDays:\n${outline}\n\nTheir feedback:\n"""${feedback}"""\n\nRevise the program to address the feedback while keeping what already works and keeping the science sound. If a request would be unsafe or conflicts with their goals, adapt it sensibly and say so. In "changes", list each change you made and why, in plain words. ${BLOCK_TASK} Set "rewrite" to false only for a day that stays on the same weekday with exactly the same exercises; otherwise true.`,
+    6000,
+  )) as Block;
+  const byDay = new Map(current.days.map((d) => [d.dayOfWeek, d]));
+  return writeDays(
+    anthropic,
+    ctx,
+    block,
+    (d) => {
+      const old = byDay.get(d.dayOfWeek);
+      return `\n\nThis is a revision. Their feedback: """${feedback}"""${old ? `\nThis day currently has (keep what still fits the new outline):\n${JSON.stringify(old.exercises)}` : ""}`;
+    },
+    (d) => (d.rewrite === false ? (byDay.get(d.dayOfWeek)?.exercises ?? null) : null),
+  );
+}
+
+// Supabase stops the function at 150 s; give up a little before that so the
+// row says "failed" (and the app shows Try again) instead of spinning forever.
+const TIME_LIMIT_MS = 135_000;
+
+// Writes the program in the background and stores the outcome on the row.
+async function generateInto(supabase: SupabaseClient, rowId: string, write: () => Promise<Program>) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new ProgramError("Your coach ran out of time, try again")), TIME_LIMIT_MS);
+  });
   try {
-    const program = cleanProgram((await askClaude(anthropic, schema, prompt)) as Program, ctx.metrics, ctx.liftDays);
+    const program = await Promise.race([write(), timeout]);
     const { error } = await supabase
       .from("programs")
       .update({ status: "draft", name: program.name, plan: program })
@@ -338,6 +430,8 @@ async function generateInto(
     const { message } = friendlyError(error);
     console.error(`Program generation failed: ${error instanceof Error ? error.message : error}`);
     await supabase.from("programs").update({ status: "failed", error: message }).eq("id", rowId);
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -394,8 +488,9 @@ Deno.serve(async (req) => {
       .limit(1)
       .maybeSingle();
     if (pending) {
-      // A draft waits for review; a program still "generating" after 10 minutes is stuck.
-      const stuck = pending.status === "generating" && Date.now() - Date.parse(pending.created_at) > 10 * 60_000;
+      // A draft waits for review. Functions stop after 150 s, so a program
+      // still "generating" after 4 minutes was cut off.
+      const stuck = pending.status === "generating" && Date.now() - Date.parse(pending.created_at) > 4 * 60_000;
       if (!stuck) return json({ programId: pending.id, cached: true });
       await supabase.from("programs").update({ status: "failed", error: "Timed out" }).eq("id", pending.id);
     }
@@ -407,9 +502,7 @@ Deno.serve(async (req) => {
       .single();
     if (error) return json({ error: error.message }, 500);
 
-    EdgeRuntime.waitUntil(
-      generateInto(supabase, anthropic, row.id, ctx, `${ctx.text}\n\nWrite their 4-week program.`, PROGRAM_SCHEMA),
-    );
+    EdgeRuntime.waitUntil(generateInto(supabase, row.id, () => writeProgram(anthropic, ctx)));
     return json({ programId: row.id, cached: false });
   }
 
@@ -443,8 +536,7 @@ Deno.serve(async (req) => {
       .single();
     if (error) return json({ error: error.message }, 500);
 
-    const prompt = `${ctx.text}\n\nTheir current program (JSON):\n${JSON.stringify({ ...plan, changes: undefined })}\n\nTheir feedback:\n"""${feedback}"""\n\nRevise the program to address the feedback while keeping what already works and keeping the science sound. If a request would be unsafe or conflicts with their goals, adapt it sensibly and say so. In "changes", list each change you made and why, in plain words.`;
-    EdgeRuntime.waitUntil(generateInto(supabase, anthropic, row.id, ctx, prompt, REVISION_SCHEMA));
+    EdgeRuntime.waitUntil(generateInto(supabase, row.id, () => reviseProgram(anthropic, ctx, plan, feedback)));
     return json({ programId: row.id, cached: false });
   }
 

@@ -20,7 +20,6 @@ export type Readiness = {
 
 export type DailyRundown = {
   date: string;
-  coachSentence: string;
   training: TrainingSession[];
   food: { calories: number; proteinG: number; carbsG: number; fatG: number; note: string };
   readiness: Readiness;
@@ -29,8 +28,6 @@ export type DailyRundown = {
 
 export const placeholderRundown: DailyRundown = {
   date: new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }),
-  coachSentence:
-    "You slept well and your resting HR is normal, so push the bench today: top set of 3 at 235, then save your legs for MMA tonight.",
   training: [
     {
       time: "4:00 – 5:30 PM",

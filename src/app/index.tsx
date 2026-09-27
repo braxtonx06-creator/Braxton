@@ -1,14 +1,16 @@
 import { Link, Redirect } from "expo-router";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ErrorState } from "@/components/ErrorState";
 import { colors, radius } from "@/components/theme";
 import { placeholderRundown as today } from "@/data/today";
+import { useCoachSentence } from "@/lib/coach";
 import { useJournal } from "@/lib/journal";
 
 export default function HomeScreen() {
   const { journal, error, reload } = useJournal();
+  const coach = useCoachSentence(!!journal?.completedAt);
   const { food, readiness } = today;
 
   if (error) return <ErrorState message={error} onRetry={reload} />;
@@ -31,13 +33,27 @@ export default function HomeScreen() {
         </View>
         <Text style={styles.title}>{name ? `Today, ${name}` : "Today"}</Text>
 
-        {/* The one coach sentence */}
+        {/* The one coach sentence, written by Claude from your journal */}
         <View style={styles.coach}>
           <Text style={styles.coachLabel}>COACH</Text>
-          <Text style={styles.coachText}>{today.coachSentence}</Text>
+          {coach.sentence ? (
+            <Text style={styles.coachText}>{coach.sentence}</Text>
+          ) : coach.error ? (
+            <>
+              <Text style={styles.body}>Couldn't reach your coach: {coach.error}</Text>
+              <Pressable onPress={coach.retry} hitSlop={8}>
+                <Text style={styles.journalLink}>Try again</Text>
+              </Pressable>
+            </>
+          ) : (
+            <View style={styles.thinking}>
+              <ActivityIndicator color={colors.accent} />
+              <Text style={styles.body}>Your coach is thinking…</Text>
+            </View>
+          )}
         </View>
 
-        <Section title="Readiness">
+        <Section title="Readiness · sample">
           <View style={styles.row}>
             <Text style={[styles.big, { color: colors.good }]}>{readiness.level}</Text>
             <View style={styles.stats}>
@@ -49,7 +65,7 @@ export default function HomeScreen() {
           <Text style={styles.body}>{readiness.summary}</Text>
         </Section>
 
-        <Section title="Training">
+        <Section title="Training · sample">
           {today.training.map((s) => (
             <View key={s.title} style={styles.session}>
               <View style={styles.row}>
@@ -62,7 +78,7 @@ export default function HomeScreen() {
           ))}
         </Section>
 
-        <Section title="Food">
+        <Section title="Food · sample">
           <View style={styles.stats}>
             <Stat label="Calories" value={food.calories.toLocaleString()} />
             <Stat label="Protein" value={`${food.proteinG} g`} />
@@ -72,7 +88,7 @@ export default function HomeScreen() {
           <Text style={styles.body}>{food.note}</Text>
         </Section>
 
-        <Text style={styles.footer}>Placeholder data. Real plans and stats come in later milestones.</Text>
+        <Text style={styles.footer}>Sample data below the coach. Real plans and stats come in later milestones.</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -102,6 +118,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   date: { color: colors.muted, fontSize: 14 },
   journalLink: { color: colors.accent, fontSize: 15, fontWeight: "600" },
+  thinking: { flexDirection: "row", alignItems: "center", gap: 10 },
   title: { color: colors.text, fontSize: 34, fontWeight: "800", marginBottom: 4 },
   coach: {
     backgroundColor: colors.card,

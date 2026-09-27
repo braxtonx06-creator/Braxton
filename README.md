@@ -24,7 +24,7 @@ src/app/          screens (each file is a route; _layout.tsx wraps them)
 src/components/   shared UI and theme
 src/data/         static data (journal questions, placeholder rundown)
 src/lib/          Supabase client, sign-in session, journal storage
-supabase/         database migrations (tables and security rules)
+supabase/         database migrations and the coach-sentence Edge Function
 ```
 
 ## Checks
@@ -32,3 +32,9 @@ supabase/         database migrations (tables and security rules)
 ```bash
 npm run typecheck
 ```
+
+## The AI coach
+
+`supabase/functions/coach-sentence` runs on Supabase, not in the app. It reads your journal,
+asks Claude for today's sentence, and saves one per day in `coach_messages`. It needs the
+`ANTHROPIC_API_KEY` secret set in Supabase (Edge Functions → Secrets). The key is never in the app.

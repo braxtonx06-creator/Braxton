@@ -10,8 +10,6 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const MODEL = "claude-opus-5";
 
-const anthropic = new Anthropic(); // reads ANTHROPIC_API_KEY
-
 const FOCUS_LABELS: Record<string, string> = {
   strength: "Strength",
   speed: "Speed & power",
@@ -97,14 +95,16 @@ type Plan = {
   }[];
 };
 
+class PlanError extends Error {}
+
 // Structured output guarantees the shape, not sensible values, so check those here.
 function cleanPlan(plan: Plan): Plan {
-  if (!plan.exercises.length) throw new Error("The plan has no exercises");
+  if (!plan.exercises.length) throw new PlanError("The plan has no exercises");
   const seen = new Set<string>();
   return {
     ...plan,
     exercises: plan.exercises.map((ex, i) => {
-      if (!ex.sets.length) throw new Error(`${ex.name} has no sets`);
+      if (!ex.sets.length) throw new PlanError(`${ex.name} has no sets`);
       let id = ex.id.replace(/[^a-z0-9_]/gi, "_").toLowerCase() || `exercise_${i}`;
       while (seen.has(id)) id += "_2";
       seen.add(id);
@@ -146,6 +146,15 @@ function json(body: unknown, status = 200) {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  // Read the key per request, so a newly saved secret works right away,
+  // and fail clearly if it's missing instead of a confusing SDK error later.
+  const apiKey = Deno.env.get("ANTHROPIC_API_KEY")?.trim();
+  if (!apiKey) {
+    console.error("ANTHROPIC_API_KEY secret is not set for Edge Functions");
+    return json({ error: "Coach isn't set up yet: the ANTHROPIC_API_KEY secret is missing in Supabase" }, 500);
+  }
+  const anthropic = new Anthropic({ apiKey });
 
   // The user's own login token: every database call below runs as them.
   const authHeader = req.headers.get("Authorization");
@@ -235,11 +244,12 @@ Deno.serve(async (req) => {
       console.error(`Anthropic API error ${error.status}: ${error.message}`);
       return json({ error: "Coach is unavailable right now" }, 502);
     }
-    if (error instanceof Error) {
+    if (error instanceof PlanError) {
       console.error(`Bad test plan: ${error.message}`);
       return json({ error: "The coach's plan didn't make sense, try again" }, 502);
     }
-    throw error;
+    console.error(`Unexpected error: ${error instanceof Error ? error.message : error}`);
+    return json({ error: "Something went wrong building your test, try again" }, 500);
   }
 
   const { data: saved, error: saveError } = await supabase

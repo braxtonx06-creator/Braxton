@@ -11,8 +11,6 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const MODEL = "claude-opus-5";
 
-const anthropic = new Anthropic(); // reads ANTHROPIC_API_KEY
-
 const SYSTEM_PROMPT = `You are the coach inside Personal O.S, an app that tells an athlete what to do today and why. You cover training, nutrition, sleep, recovery and body weight.
 
 Write one sentence for the top of their home screen, plus a short "why". The sentence can be:
@@ -78,6 +76,15 @@ function json(body: unknown, status = 200) {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  // Read the key per request, so a newly saved secret works right away,
+  // and fail clearly if it's missing instead of a confusing SDK error later.
+  const apiKey = Deno.env.get("ANTHROPIC_API_KEY")?.trim();
+  if (!apiKey) {
+    console.error("ANTHROPIC_API_KEY secret is not set for Edge Functions");
+    return json({ error: "Coach isn't set up yet: the ANTHROPIC_API_KEY secret is missing in Supabase" }, 500);
+  }
+  const anthropic = new Anthropic({ apiKey });
 
   // The user's own login token: every database call below runs as them.
   const authHeader = req.headers.get("Authorization");
@@ -181,7 +188,8 @@ Deno.serve(async (req) => {
       console.error(`Anthropic API error ${error.status}: ${error.message}`);
       return json({ error: "Coach is unavailable right now" }, 502);
     }
-    throw error;
+    console.error(`Unexpected error: ${error instanceof Error ? error.message : error}`);
+    return json({ error: "Something went wrong reaching your coach, try again" }, 500);
   }
 
   // Save it, remembering which check-in (if any) it was written from.

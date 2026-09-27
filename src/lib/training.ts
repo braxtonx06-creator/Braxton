@@ -6,6 +6,7 @@ import { useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
 
 import { localDate } from "@/lib/dates";
+import { loadCurrentProgram, loadProgramWorkouts, Program, ProgramWorkoutRef } from "@/lib/program";
 import { supabase } from "@/lib/supabase";
 
 // ---------- Goals ----------
@@ -43,10 +44,13 @@ export type PlanSet = {
   isTest: boolean;
   suggestedWeight: number; // 0 = no suggestion
   targetReps: number; // 0 = not a rep target
+  targetRpe?: number; // program sets: used when the user doesn't type an RPE
 };
 
 export type PlanExercise = {
   id: string;
+  // Which tested number this exercise feeds (e.g. bench_press). Defaults to id.
+  metric?: string;
   name: string;
   kind: "strength" | "measure";
   unit: string;
@@ -70,12 +74,14 @@ export type Workout = {
   plan: WorkoutPlan;
   log: WorkoutLog;
   status: "planned" | "in_progress" | "completed";
+  program_week: number | null;
+  results: Result[] | null;
 };
 
 export async function loadWorkout(id: string): Promise<Workout> {
   const { data, error } = await supabase
     .from("workouts")
-    .select("id, kind, title, plan, log, status")
+    .select("id, kind, title, plan, log, status, program_week, results")
     .eq("id", id)
     .single();
   if (error) throw error;
@@ -114,10 +120,26 @@ export async function getTestWorkoutId(): Promise<string> {
 // Reps "to failure" = reps done + reps left in the tank (10 - RPE).
 const PERCENT_OF_MAX = [1, 1, 0.955, 0.922, 0.892, 0.863, 0.837, 0.811, 0.786, 0.762, 0.739, 0.707, 0.68];
 
+// Half-RPEs (8.5) land between chart rows, so interpolate. Past 12 reps the
+// chart stops, so higher-rep accessory work uses the Epley formula instead.
+function percentOfMax(repsToFailure: number) {
+  if (repsToFailure > 12) return 1 / (1 + repsToFailure / 30);
+  const low = Math.floor(repsToFailure);
+  const high = Math.min(low + 1, 12);
+  const t = repsToFailure - low;
+  return PERCENT_OF_MAX[low] * (1 - t) + PERCENT_OF_MAX[high] * t;
+}
+
 export function estimatedMax(weight: number, reps: number, rpe: number): number | null {
   const repsToFailure = reps + (10 - rpe);
-  if (weight <= 0 || reps < 1 || repsToFailure > 12) return null;
-  return weight / PERCENT_OF_MAX[Math.round(repsToFailure)];
+  if (weight <= 0 || reps < 1 || repsToFailure > 30) return null;
+  return weight / percentOfMax(repsToFailure);
+}
+
+// The weight for `reps` at `rpe`, from an estimated max, rounded to 5 lb.
+export function weightFor(max: number, reps: number, rpe: number): number {
+  const repsToFailure = Math.min(Math.max(reps + (10 - rpe), 1), 30);
+  return Math.round((max * percentOfMax(repsToFailure)) / 5) * 5;
 }
 
 // Parses a typed number. "4:50" (minutes:seconds) becomes 290 seconds.
@@ -156,7 +178,15 @@ export function effectiveSet(set: PlanSet, log: SetLog | undefined) {
   };
 }
 
-export type Result = { metric: string; name: string; value: number; unit: string; better: "higher" | "lower" };
+export type Result = {
+  metric: string;
+  name: string;
+  value: number;
+  unit: string;
+  better: "higher" | "lower";
+  isPR?: boolean; // program workouts: beat the previous number
+  previous?: number;
+};
 
 // Best estimated max (strength) or best attempt (measure) for each exercise.
 export function computeResults(plan: WorkoutPlan, log: WorkoutLog): Result[] {
@@ -168,8 +198,8 @@ export function computeResults(plan: WorkoutPlan, log: WorkoutLog): Result[] {
       if (!wasPerformed(entry)) return;
       const s = effectiveSet(set, entry);
       if (ex.kind === "strength") {
-        // No RPE entered: assume the test set's target (RPE 9), or failure otherwise (conservative).
-        const rpe = s.rpe ?? (set.isTest ? 9 : 10);
+        // No RPE entered: assume the set's target, the test target (RPE 9), or failure (conservative).
+        const rpe = s.rpe ?? set.targetRpe ?? (set.isTest ? 9 : 10);
         const max = s.weight && s.reps ? estimatedMax(s.weight, s.reps, Math.min(Math.max(rpe, 5), 10)) : null;
         if (max) values.push(max);
       } else if (s.value !== null && s.value > 0) {
@@ -179,7 +209,7 @@ export function computeResults(plan: WorkoutPlan, log: WorkoutLog): Result[] {
     if (!values.length) continue;
     const best = ex.better === "lower" ? Math.min(...values) : Math.max(...values);
     results.push({
-      metric: ex.id,
+      metric: ex.metric || ex.id,
       name: ex.name,
       value: ex.kind === "strength" ? Math.round(best) : Math.round(best * 100) / 100,
       unit: ex.kind === "strength" ? "lb est. max" : ex.unit,
@@ -189,22 +219,47 @@ export function computeResults(plan: WorkoutPlan, log: WorkoutLog): Result[] {
   return results;
 }
 
-// Finishes the workout and saves its results as the user's baselines.
+// Latest saved number per metric (newest first).
+export async function loadLatestBaselines(): Promise<Map<string, Result>> {
+  const { data, error } = await supabase
+    .from("baselines")
+    .select("metric, name, value, unit, better")
+    .order("measured_on", { ascending: false })
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  const latest = new Map<string, Result>();
+  for (const b of data ?? []) {
+    if (!latest.has(b.metric)) latest.set(b.metric, { ...b, value: Number(b.value) } as Result);
+  }
+  return latest;
+}
+
+const beats = (r: Result, old: Result) => (r.better === "lower" ? r.value < old.value : r.value > old.value);
+
+// Finishes the workout and saves its numbers.
+// A test replaces every number it measured. A program workout only saves a
+// number that's new or better than before (a PR), so one off day never
+// lowers the weights the app suggests.
 export async function completeWorkout(workout: Workout, typedLog: WorkoutLog): Promise<Result[]> {
   // Sets with numbers typed in count as done, even if ✓ wasn't tapped.
   const log = Object.fromEntries(
     Object.entries(typedLog).map(([key, entry]) => [key, wasPerformed(entry) ? { ...entry, done: true } : entry]),
   );
-  const results = computeResults(workout.plan, log);
+  const current = await loadLatestBaselines();
+  const results = computeResults(workout.plan, log).map((r) => {
+    const old = current.get(r.metric);
+    return workout.kind === "program" && old ? { ...r, isPR: beats(r, old), previous: old.value } : r;
+  });
+  const toSave = workout.kind === "test" ? results : results.filter((r) => r.isPR !== false);
   const uid = await userId();
   const { error } = await supabase
     .from("workouts")
-    .update({ log, status: "completed", completed_at: new Date().toISOString() })
+    .update({ log, results, status: "completed", completed_at: new Date().toISOString() })
     .eq("id", workout.id);
   if (error) throw error;
-  if (results.length) {
+  if (toSave.length) {
     const { error: baselineError } = await supabase.from("baselines").insert(
-      results.map((r) => ({
+      toSave.map((r) => ({
         user_id: uid,
         workout_id: workout.id,
         metric: r.metric,
@@ -226,10 +281,12 @@ export type TrainingSummary = {
   goals: TrainingGoals | null;
   test: { id: string; status: Workout["status"] } | null;
   baselines: Result[];
+  program: Program | null;
+  programWorkouts: ProgramWorkoutRef[];
 };
 
 export async function loadTrainingSummary(): Promise<TrainingSummary> {
-  const [goals, test, baselines] = await Promise.all([
+  const [goals, test, latest, program] = await Promise.all([
     supabase.from("training_goals").select("focuses, primary_focus").maybeSingle(),
     supabase
       .from("workouts")
@@ -238,22 +295,17 @@ export async function loadTrainingSummary(): Promise<TrainingSummary> {
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle(),
-    supabase
-      .from("baselines")
-      .select("metric, name, value, unit, better, measured_on")
-      .order("measured_on", { ascending: false }),
+    loadLatestBaselines(),
+    loadCurrentProgram(),
   ]);
-  for (const r of [goals, test, baselines]) if (r.error) throw r.error;
+  for (const r of [goals, test]) if (r.error) throw r.error;
 
-  // Latest value per metric.
-  const latest = new Map<string, Result>();
-  for (const b of baselines.data ?? []) {
-    if (!latest.has(b.metric)) latest.set(b.metric, { ...b, value: Number(b.value) } as Result);
-  }
   return {
     goals: goals.data ? { focuses: goals.data.focuses, primaryFocus: goals.data.primary_focus } : null,
     test: test.data as TrainingSummary["test"],
     baselines: [...latest.values()],
+    program,
+    programWorkouts: program ? await loadProgramWorkouts(program.id) : [],
   };
 }
 

@@ -3,10 +3,13 @@ import { useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { colors, radius } from "@/components/theme";
+import type { CheckIn } from "@/lib/checkIn";
+import { isoWeekday, programWeek, requestProgram, startProgramDay, WEEKDAYS } from "@/lib/program";
 import { FOCUSES, formatResult, getTestWorkoutId, TrainingSummary } from "@/lib/training";
 
-// The home screen's training card walks through: goals -> testing workout -> your numbers.
-export function TrainingCard({ summary }: { summary: TrainingSummary }) {
+// The home screen's training card walks through:
+// goals -> testing workout -> program (build, review, then today's session) + your numbers.
+export function TrainingCard({ summary, checkIn }: { summary: TrainingSummary; checkIn: CheckIn | null }) {
   const [building, setBuilding] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -74,7 +77,148 @@ export function TrainingCard({ summary }: { summary: TrainingSummary }) {
     );
   }
 
-  // 3. Test done: show the numbers.
+  // 3. Test done: the program, then the numbers.
+  return (
+    <>
+      <ProgramCard summary={summary} checkIn={checkIn} />
+      <NumbersCard summary={summary} building={building} error={error} onRetake={openTest} />
+    </>
+  );
+}
+
+function ProgramCard({ summary, checkIn }: { summary: TrainingSummary; checkIn: CheckIn | null }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const program = summary.program;
+
+  const act = async (action: () => Promise<void>) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await action();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const build = () =>
+    act(async () => {
+      await requestProgram();
+      router.push("/program");
+    });
+
+  // a) No program yet.
+  if (!program) {
+    return (
+      <View style={styles.card}>
+        <Text style={styles.title}>YOUR PROGRAM</Text>
+        <Text style={styles.heading}>Build your 4-week program</Text>
+        <Text style={styles.body}>
+          Your coach writes it from your numbers, goals and schedule. You review it before it starts.
+        </Text>
+        {busy ? (
+          <View style={styles.building}>
+            <ActivityIndicator color={colors.accent} />
+            <Text style={styles.body}>Your coach is writing your program. This can take a minute or two…</Text>
+          </View>
+        ) : (
+          <Button label="Build my program" onPress={build} />
+        )}
+        {error && <Text style={styles.error}>{error}</Text>}
+      </View>
+    );
+  }
+
+  // b) A draft waiting for approval.
+  if (program.status === "draft") {
+    return (
+      <View style={styles.card}>
+        <Text style={styles.title}>YOUR PROGRAM</Text>
+        <Text style={styles.heading}>{program.plan.name}</Text>
+        <Text style={styles.body}>{program.plan.summary}</Text>
+        <Button label="Review program" onPress={() => router.push("/program")} />
+      </View>
+    );
+  }
+
+  const week = programWeek(program);
+
+  // c) The 4 weeks are over (the monthly review comes in the next milestone).
+  if (week > 4) {
+    return (
+      <View style={styles.card}>
+        <Text style={styles.title}>YOUR PROGRAM</Text>
+        <Text style={styles.heading}>Block complete</Text>
+        <Text style={styles.body}>You finished {program.plan.name}. Time for the next block.</Text>
+        {busy ? <ActivityIndicator color={colors.accent} /> : <Button label="Build my next block" onPress={build} />}
+        {error && <Text style={styles.error}>{error}</Text>}
+      </View>
+    );
+  }
+
+  // d) Active: today's session, or the next one.
+  const today = isoWeekday();
+  const day = program.plan.days.find((d) => d.dayOfWeek === today);
+  const workout = day && summary.programWorkouts.find((w) => w.week === week && w.day === day.dayOfWeek);
+  const next = program.plan.days.find((d) => d.dayOfWeek > today) ?? program.plan.days[0];
+
+  const open = () =>
+    act(async () => {
+      const id = await startProgramDay(program, week, day!, checkIn);
+      router.push(`/workout/${id}`);
+    });
+
+  return (
+    <View style={styles.card}>
+      <View style={styles.row}>
+        <Text style={styles.title}>WEEK {week} · TODAY</Text>
+        <Pressable hitSlop={8} onPress={() => router.push("/program")}>
+          <Text style={styles.link}>Full program</Text>
+        </Pressable>
+      </View>
+      {day ? (
+        <>
+          <Text style={styles.heading}>{day.title}</Text>
+          {!!day.timing && <Text style={styles.focus}>{day.timing}</Text>}
+          {day.exercises.map((ex) => (
+            <Text key={ex.id} style={styles.body}>
+              {ex.name} · {ex.kind === "conditioning" ? `${ex.sets} round${ex.sets === 1 ? "" : "s"}` : `${ex.sets} × ${ex.reps}`}
+            </Text>
+          ))}
+          {busy ? (
+            <ActivityIndicator color={colors.accent} />
+          ) : (
+            <Button
+              label={workout?.status === "completed" ? "View workout" : workout ? "Continue workout" : "Start workout"}
+              onPress={open}
+            />
+          )}
+        </>
+      ) : (
+        <>
+          <Text style={styles.heading}>No lifting today</Text>
+          <Text style={styles.body}>
+            Recover and hit your class if you have one. Next up: {WEEKDAYS[next.dayOfWeek]}, {next.title}.
+          </Text>
+        </>
+      )}
+      {error && <Text style={styles.error}>{error}</Text>}
+    </View>
+  );
+}
+
+function NumbersCard({
+  summary,
+  building,
+  error,
+  onRetake,
+}: {
+  summary: TrainingSummary;
+  building: boolean;
+  error: string | null;
+  onRetake: () => void;
+}) {
   return (
     <View style={styles.card}>
       <View style={styles.row}>
@@ -94,7 +238,6 @@ export function TrainingCard({ summary }: { summary: TrainingSummary }) {
           </View>
         );
       })}
-      <Text style={styles.body}>Your coach builds your 4-week program from these next.</Text>
       {building ? (
         <View style={styles.building}>
           <ActivityIndicator color={colors.accent} />
@@ -102,7 +245,7 @@ export function TrainingCard({ summary }: { summary: TrainingSummary }) {
         </View>
       ) : (
         // A new test replaces these numbers (the latest result per test is used).
-        <Pressable hitSlop={8} onPress={openTest}>
+        <Pressable hitSlop={8} onPress={onRetake}>
           <Text style={styles.retake}>Retake test</Text>
         </Pressable>
       )}

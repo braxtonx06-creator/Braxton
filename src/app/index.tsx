@@ -93,7 +93,7 @@ export default function HomeScreen() {
         {/* After checking in, the summary sits under the coach (tap Edit to change it). */}
         {checkInDone && <CheckInCard checkIn={checkIns.checkIn} onSaved={checkIns.setCheckIn} />}
 
-        <TrainingCard summary={training.summary} />
+        <TrainingCard summary={training.summary} checkIn={checkIns.checkIn} />
 
         <Section title="Food · sample">
           <View style={styles.stats}>

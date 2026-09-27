@@ -43,6 +43,8 @@ export default function WorkoutScreen() {
   const [restEndsAt, setRestEndsAt] = useState<number | null>(null);
   const [finishing, setFinishing] = useState(false);
   const [results, setResults] = useState<Result[] | null>(null);
+  // The exercise being typed into gets highlighted, so numbers land in the right card.
+  const [activeExercise, setActiveExercise] = useState<string | null>(null);
   const started = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -53,7 +55,7 @@ export default function WorkoutScreen() {
         setWorkout(w);
         setLog(w.log ?? {});
         started.current = w.status !== "planned";
-        if (w.status === "completed") setResults(computeResults(w.plan, w.log));
+        if (w.status === "completed") setResults(w.results ?? computeResults(w.plan, w.log));
       })
       .catch((e: Error) => setLoadError(e.message));
   }, [id]);
@@ -123,6 +125,7 @@ export default function WorkoutScreen() {
         setResults(r);
         setWorkout({ ...workout, status: "completed" });
         setRestEndsAt(null);
+        setActiveExercise(null);
       } catch (e) {
         setSaveError(`Couldn't finish: ${(e as Error).message}`);
       } finally {
@@ -151,11 +154,13 @@ export default function WorkoutScreen() {
           <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}>
             <Text style={styles.back}>‹ Today</Text>
           </Pressable>
-          <Text style={styles.kicker}>{workout.kind === "test" ? "TESTING WORKOUT" : "WORKOUT"}</Text>
+          <Text style={styles.kicker}>
+            {workout.kind === "test" ? "TESTING WORKOUT" : `WEEK ${workout.program_week ?? ""} WORKOUT`}
+          </Text>
           <Text style={styles.title}>{workout.plan.title}</Text>
           {!completed && <Text style={styles.muted}>{workout.plan.intro}</Text>}
 
-          {results && <ResultsCard results={results} />}
+          {results && <ResultsCard results={results} kind={workout.kind} />}
 
           {!completed && (
             <Text style={styles.progress}>
@@ -164,7 +169,7 @@ export default function WorkoutScreen() {
           )}
 
           {workout.plan.exercises.map((ex) => (
-            <View key={ex.id} style={styles.card}>
+            <View key={ex.id} style={[styles.card, !completed && activeExercise === ex.id && styles.cardActive]}>
               <Text style={styles.exName}>{ex.name}</Text>
               {!completed && <Text style={styles.instructions}>{ex.instructions}</Text>}
               {ex.restSeconds > 0 && !completed && (
@@ -189,6 +194,7 @@ export default function WorkoutScreen() {
                             value={entry.weight}
                             placeholder={set.suggestedWeight ? String(set.suggestedWeight) : "–"}
                             editable={!completed}
+                            onFocus={() => setActiveExercise(ex.id)}
                             onChange={(t) => update(key, { weight: t })}
                           />
                           <NumberBox
@@ -196,6 +202,7 @@ export default function WorkoutScreen() {
                             value={entry.reps}
                             placeholder={set.targetReps ? String(set.targetReps) : "–"}
                             editable={!completed}
+                            onFocus={() => setActiveExercise(ex.id)}
                             onChange={(t) => update(key, { reps: t })}
                           />
                           <NumberBox
@@ -203,6 +210,7 @@ export default function WorkoutScreen() {
                             value={entry.rpe}
                             placeholder={set.isTest ? "9" : "–"}
                             editable={!completed}
+                            onFocus={() => setActiveExercise(ex.id)}
                             onChange={(t) => update(key, { rpe: t })}
                           />
                         </>
@@ -214,7 +222,8 @@ export default function WorkoutScreen() {
                           allowTime={/sec/i.test(ex.unit)}
                           wide
                           editable={!completed}
-                          onChange={(t) => update(key, { value: t })}
+                          onFocus={() => setActiveExercise(ex.id)}
+                            onChange={(t) => update(key, { value: t })}
                         />
                       )}
                       <Pressable
@@ -260,6 +269,7 @@ function NumberBox({
   editable,
   wide,
   allowTime,
+  onFocus,
   onChange,
 }: {
   label: string;
@@ -268,6 +278,7 @@ function NumberBox({
   editable: boolean;
   wide?: boolean;
   allowTime?: boolean;
+  onFocus?: () => void;
   onChange: (text: string) => void;
 }) {
   return (
@@ -281,13 +292,14 @@ function NumberBox({
         keyboardType={allowTime ? "numbers-and-punctuation" : "decimal-pad"}
         editable={editable}
         selectTextOnFocus
+        onFocus={onFocus}
       />
       <Text style={styles.boxLabel}>{label}</Text>
     </View>
   );
 }
 
-function ResultsCard({ results }: { results: Result[] }) {
+function ResultsCard({ results, kind }: { results: Result[]; kind: Workout["kind"] }) {
   return (
     <View style={[styles.card, styles.resultsCard]}>
       <Text style={styles.kicker}>YOUR NUMBERS</Text>
@@ -296,7 +308,14 @@ function ResultsCard({ results }: { results: Result[] }) {
           const shown = formatResult(r.value, r.unit);
           return (
             <View key={r.metric} style={styles.resultRow}>
-              <Text style={styles.resultName}>{r.name}</Text>
+              <View style={{ flexShrink: 1 }}>
+                <Text style={styles.resultName}>
+                  {r.name} {r.isPR && <Text style={styles.pr}> PR </Text>}
+                </Text>
+                {r.previous !== undefined && (
+                  <Text style={styles.muted}>was {formatResult(r.previous, r.unit).value}</Text>
+                )}
+              </View>
               <Text style={styles.resultValue}>
                 {shown.value} <Text style={styles.resultUnit}>{shown.unit}</Text>
               </Text>
@@ -306,7 +325,11 @@ function ResultsCard({ results }: { results: Result[] }) {
       ) : (
         <Text style={styles.muted}>No sets were ticked, so there are no numbers yet.</Text>
       )}
-      <Text style={styles.muted}>Your coach will build your program from these.</Text>
+      <Text style={styles.muted}>
+        {kind === "test"
+          ? "Your coach will build your program from these."
+          : "PRs raise the weights your program suggests from now on."}
+      </Text>
     </View>
   );
 }
@@ -359,6 +382,8 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.4 },
   error: { color: "#F87171", fontSize: 14 },
   resultsCard: { borderWidth: 1, borderColor: colors.accent },
+  cardActive: { borderWidth: 1, borderColor: colors.accent },
+  pr: { color: "#0E0F12", backgroundColor: colors.good, fontSize: 12, fontWeight: "800", overflow: "hidden" },
   resultRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline" },
   resultName: { color: colors.text, fontSize: 16, fontWeight: "600", flexShrink: 1 },
   resultValue: { color: colors.text, fontSize: 20, fontWeight: "800" },

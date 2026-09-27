@@ -25,7 +25,7 @@ export default function JournalScreen() {
       if (window.confirm("Delete all your journal answers?")) doDelete();
       return;
     }
-    Alert.alert("Delete your journal?", "This permanently removes your answers, check-ins, coach messages, goals and workouts.", [
+    Alert.alert("Delete your journal?", "This permanently removes your answers, check-ins, coach messages, goals, programs and workouts.", [
       { text: "Cancel", style: "cancel" },
       { text: "Delete", style: "destructive", onPress: doDelete },
     ]);

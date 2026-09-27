@@ -324,17 +324,26 @@ async function loadContext(supabase: SupabaseClient): Promise<Context | string> 
 
 // ---------- Claude ----------
 
-async function askClaude(anthropic: Anthropic, schema: Record<string, unknown>, prompt: string, maxTokens = 12000) {
+// max_tokens is a ceiling for thinking + answer together (you only pay for
+// what's used), so keep it roomy. "low" effort suits steps that follow a plan.
+async function askClaude(
+  anthropic: Anthropic,
+  schema: Record<string, unknown>,
+  prompt: string,
+  { label = "call", effort = "medium" }: { label?: string; effort?: "low" | "medium" } = {},
+) {
+  const started = Date.now();
   const response = await anthropic.beta.messages.create({
     model: MODEL,
-    max_tokens: maxTokens,
+    max_tokens: 32000,
     // If a safety classifier declines, retry server-side on Anthropic's recommended model.
     betas: ["server-side-fallback-2026-07-01"],
     fallbacks: "default",
-    output_config: { effort: "medium", format: { type: "json_schema", schema } },
+    output_config: { effort, format: { type: "json_schema", schema } },
     system: COACHING_RULES,
     messages: [{ role: "user", content: prompt }],
-  });
+  }, { timeout: 140_000 }); // never longer than the function itself may run
+  console.log(`${label}: ${response.stop_reason}, ${response.usage.output_tokens} tokens, ${Math.round((Date.now() - started) / 1000)}s`);
   if (response.stop_reason === "refusal") throw new ProgramError("The coach couldn't write this right now");
   if (response.stop_reason === "max_tokens") throw new ProgramError("The program came back incomplete, try again");
   const text = response.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("");
@@ -372,7 +381,10 @@ async function writeDays(
       const kept = keep(d);
       const exercises =
         kept ??
-        ((await askClaude(anthropic, DAY_SCHEMA, `${ctx.text}\n\n${dayTask(block, d)}${extra(d)}`, 8000)) as {
+        ((await askClaude(anthropic, DAY_SCHEMA, `${ctx.text}\n\n${dayTask(block, d)}${extra(d)}`, {
+          label: `day ${d.dayOfWeek}`,
+          effort: "low",
+        })) as {
           exercises: ProgramExercise[];
         }).exercises;
       return { dayOfWeek: d.dayOfWeek, title: d.title, timing: d.timing, purpose: d.purpose, exercises };
@@ -382,7 +394,9 @@ async function writeDays(
 }
 
 async function writeProgram(anthropic: Anthropic, ctx: Context): Promise<Program> {
-  const block = (await askClaude(anthropic, BLOCK_SCHEMA, `${ctx.text}\n\nThey need a 4-week program. ${BLOCK_TASK}`, 6000)) as Block;
+  const block = (await askClaude(anthropic, BLOCK_SCHEMA, `${ctx.text}\n\nThey need a 4-week program. ${BLOCK_TASK}`, {
+    label: "block",
+  })) as Block;
   return writeDays(anthropic, ctx, block, () => "", () => null);
 }
 
@@ -394,7 +408,7 @@ async function reviseProgram(anthropic: Anthropic, ctx: Context, current: Progra
     anthropic,
     REVISION_BLOCK_SCHEMA,
     `${ctx.text}\n\nTheir current program "${current.name}": ${current.summary}\nRationale: ${(current.rationale ?? []).join(" ")}\nWeeks: ${current.weeks.map((w) => `${w.week}: ${w.focus} (${w.rpeShift})`).join("; ")}\nDays:\n${outline}\n\nTheir feedback:\n"""${feedback}"""\n\nRevise the program to address the feedback while keeping what already works and keeping the science sound. If a request would be unsafe or conflicts with their goals, adapt it sensibly and say so. In "changes", list each change you made and why, in plain words. ${BLOCK_TASK} Set "rewrite" to false only for a day that stays on the same weekday with exactly the same exercises; otherwise true.`,
-    6000,
+    { label: "revision block" },
   )) as Block;
   const byDay = new Map(current.days.map((d) => [d.dayOfWeek, d]));
   return writeDays(

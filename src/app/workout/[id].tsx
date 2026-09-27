@@ -20,6 +20,7 @@ import { colors, radius } from "@/components/theme";
 import {
   completeWorkout,
   computeResults,
+  formatResult,
   loadWorkout,
   PlanExercise,
   Result,
@@ -28,6 +29,7 @@ import {
   setKey,
   Workout,
   WorkoutLog,
+  wasPerformed,
 } from "@/lib/training";
 
 // The whole workout on one screen: every exercise and set is visible, and you
@@ -86,7 +88,7 @@ export default function WorkoutScreen() {
 
   const completed = workout.status === "completed";
   const totalSets = workout.plan.exercises.reduce((n, ex) => n + ex.sets.length, 0);
-  const doneSets = Object.values(log).filter((s) => s.done).length;
+  const doneSets = Object.values(log).filter(wasPerformed).length;
 
   const update = (key: string, patch: Partial<SetLog>, immediately = false) => {
     const next = { ...log, [key]: { ...log[key], ...patch } };
@@ -127,9 +129,10 @@ export default function WorkoutScreen() {
         setFinishing(false);
       }
     };
-    const message =
-      doneSets < totalSets
-        ? `You've ticked ${doneSets} of ${totalSets} sets. Finish anyway?`
+    const message = !computeResults(workout.plan, log).length
+      ? "Nothing is logged yet, so this won't save any numbers. Finish anyway?"
+      : doneSets < totalSets
+        ? `You've logged ${doneSets} of ${totalSets} sets. Finish anyway?`
         : "Save your results?";
     if (Platform.OS === "web") {
       if (window.confirm(message)) doIt();
@@ -207,7 +210,8 @@ export default function WorkoutScreen() {
                         <NumberBox
                           label={ex.unit}
                           value={entry.value}
-                          placeholder="–"
+                          placeholder={/sec/i.test(ex.unit) ? "m:ss" : "–"}
+                          allowTime={/sec/i.test(ex.unit)}
                           wide
                           editable={!completed}
                           onChange={(t) => update(key, { value: t })}
@@ -255,6 +259,7 @@ function NumberBox({
   placeholder,
   editable,
   wide,
+  allowTime,
   onChange,
 }: {
   label: string;
@@ -262,6 +267,7 @@ function NumberBox({
   placeholder: string;
   editable: boolean;
   wide?: boolean;
+  allowTime?: boolean;
   onChange: (text: string) => void;
 }) {
   return (
@@ -269,10 +275,10 @@ function NumberBox({
       <TextInput
         style={styles.boxInput}
         value={value ?? ""}
-        onChangeText={(t) => onChange(t.replace(/[^0-9.,]/g, ""))}
+        onChangeText={(t) => onChange(t.replace(allowTime ? /[^0-9.,:]/g : /[^0-9.,]/g, ""))}
         placeholder={placeholder}
         placeholderTextColor={colors.muted}
-        keyboardType="decimal-pad"
+        keyboardType={allowTime ? "numbers-and-punctuation" : "decimal-pad"}
         editable={editable}
         selectTextOnFocus
       />
@@ -286,14 +292,17 @@ function ResultsCard({ results }: { results: Result[] }) {
     <View style={[styles.card, styles.resultsCard]}>
       <Text style={styles.kicker}>YOUR NUMBERS</Text>
       {results.length ? (
-        results.map((r) => (
-          <View key={r.metric} style={styles.resultRow}>
-            <Text style={styles.resultName}>{r.name}</Text>
-            <Text style={styles.resultValue}>
-              {r.value} <Text style={styles.resultUnit}>{r.unit}</Text>
-            </Text>
-          </View>
-        ))
+        results.map((r) => {
+          const shown = formatResult(r.value, r.unit);
+          return (
+            <View key={r.metric} style={styles.resultRow}>
+              <Text style={styles.resultName}>{r.name}</Text>
+              <Text style={styles.resultValue}>
+                {shown.value} <Text style={styles.resultUnit}>{shown.unit}</Text>
+              </Text>
+            </View>
+          );
+        })
       ) : (
         <Text style={styles.muted}>No sets were ticked, so there are no numbers yet.</Text>
       )}

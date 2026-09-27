@@ -3,7 +3,7 @@ import { useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { colors, radius } from "@/components/theme";
-import { FOCUSES, getTestWorkoutId, TrainingSummary } from "@/lib/training";
+import { FOCUSES, formatResult, getTestWorkoutId, TrainingSummary } from "@/lib/training";
 
 // The home screen's training card walks through: goals -> testing workout -> your numbers.
 export function TrainingCard({ summary }: { summary: TrainingSummary }) {
@@ -83,15 +83,30 @@ export function TrainingCard({ summary }: { summary: TrainingSummary }) {
           <Text style={styles.link}>View test</Text>
         </Pressable>
       </View>
-      {summary.baselines.map((b) => (
-        <View key={b.metric} style={styles.resultRow}>
-          <Text style={styles.resultName}>{b.name}</Text>
-          <Text style={styles.resultValue}>
-            {b.value} <Text style={styles.resultUnit}>{b.unit}</Text>
-          </Text>
-        </View>
-      ))}
+      {summary.baselines.map((b) => {
+        const shown = formatResult(b.value, b.unit);
+        return (
+          <View key={b.metric} style={styles.resultRow}>
+            <Text style={styles.resultName}>{b.name}</Text>
+            <Text style={styles.resultValue}>
+              {shown.value} <Text style={styles.resultUnit}>{shown.unit}</Text>
+            </Text>
+          </View>
+        );
+      })}
       <Text style={styles.body}>Your coach builds your 4-week program from these next.</Text>
+      {building ? (
+        <View style={styles.building}>
+          <ActivityIndicator color={colors.accent} />
+          <Text style={styles.body}>Your coach is designing a new test…</Text>
+        </View>
+      ) : (
+        // A new test replaces these numbers (the latest result per test is used).
+        <Pressable hitSlop={8} onPress={openTest}>
+          <Text style={styles.retake}>Retake test</Text>
+        </Pressable>
+      )}
+      {error && <Text style={styles.error}>{error}</Text>}
     </View>
   );
 }
@@ -116,6 +131,7 @@ const styles = StyleSheet.create({
   button: { backgroundColor: colors.accent, borderRadius: radius, paddingVertical: 14, alignItems: "center" },
   buttonText: { color: "#fff", fontSize: 16, fontWeight: "700" },
   error: { color: "#F87171", fontSize: 14 },
+  retake: { color: colors.muted, fontSize: 14, fontWeight: "600", textAlign: "center" },
   resultRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline" },
   resultName: { color: colors.text, fontSize: 16, fontWeight: "600", flexShrink: 1 },
   resultValue: { color: colors.text, fontSize: 20, fontWeight: "800" },

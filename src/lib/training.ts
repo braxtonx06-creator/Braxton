@@ -120,10 +120,31 @@ export function estimatedMax(weight: number, reps: number, rpe: number): number 
   return weight / PERCENT_OF_MAX[Math.round(repsToFailure)];
 }
 
+// Parses a typed number. "4:50" (minutes:seconds) becomes 290 seconds.
 const num = (s?: string) => {
-  const n = parseFloat((s ?? "").replace(",", "."));
+  const text = (s ?? "").trim().replace(",", ".");
+  if (text.includes(":")) {
+    const [min, sec] = text.split(":");
+    const total = (parseFloat(min) || 0) * 60 + (parseFloat(sec) || 0);
+    return total > 0 ? total : null;
+  }
+  const n = parseFloat(text);
   return Number.isFinite(n) ? n : null;
 };
+
+// A set counts as done if it was ticked or any number was typed into it.
+export function wasPerformed(entry: SetLog | undefined) {
+  return !!entry && (!!entry.done || [entry.weight, entry.reps, entry.value].some((v) => v?.trim()));
+}
+
+// Timed results read better as 4:50 than 290 seconds.
+export function formatResult(value: number, unit: string) {
+  if (/sec/i.test(unit) && value >= 60) {
+    const whole = Math.round(value);
+    return { value: `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`, unit: "min" };
+  }
+  return { value: String(value), unit };
+}
 
 // The weight/reps/value a set counts as: what was typed, else the suggestion.
 export function effectiveSet(set: PlanSet, log: SetLog | undefined) {
@@ -144,7 +165,7 @@ export function computeResults(plan: WorkoutPlan, log: WorkoutLog): Result[] {
     const values: number[] = [];
     ex.sets.forEach((set, i) => {
       const entry = log[setKey(ex.id, i)];
-      if (!entry?.done) return;
+      if (!wasPerformed(entry)) return;
       const s = effectiveSet(set, entry);
       if (ex.kind === "strength") {
         // No RPE entered: assume the test set's target (RPE 9), or failure otherwise (conservative).
@@ -169,7 +190,11 @@ export function computeResults(plan: WorkoutPlan, log: WorkoutLog): Result[] {
 }
 
 // Finishes the workout and saves its results as the user's baselines.
-export async function completeWorkout(workout: Workout, log: WorkoutLog): Promise<Result[]> {
+export async function completeWorkout(workout: Workout, typedLog: WorkoutLog): Promise<Result[]> {
+  // Sets with numbers typed in count as done, even if ✓ wasn't tapped.
+  const log = Object.fromEntries(
+    Object.entries(typedLog).map(([key, entry]) => [key, wasPerformed(entry) ? { ...entry, done: true } : entry]),
+  );
   const results = computeResults(workout.plan, log);
   const uid = await userId();
   const { error } = await supabase

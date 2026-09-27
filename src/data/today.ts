@@ -13,7 +13,8 @@ export type TrainingSession = {
 export type Readiness = {
   level: "Low" | "Moderate" | "Good" | "High";
   sleepHours: number;
-  hrvMs: number;
+  // Resting HR vs. your normal. Garmin shares this with Apple Health; it does not share HRV.
+  restingHr: number;
   summary: string;
 };
 
@@ -29,7 +30,7 @@ export type DailyRundown = {
 export const placeholderRundown: DailyRundown = {
   date: new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }),
   coachSentence:
-    "You slept well and HRV is steady, so push the bench today: top set of 3 at 235, then save your legs for MMA tonight.",
+    "You slept well and your resting HR is normal, so push the bench today: top set of 3 at 235, then save your legs for MMA tonight.",
   training: [
     {
       time: "4:00 – 5:30 PM",
@@ -54,7 +55,7 @@ export const placeholderRundown: DailyRundown = {
   readiness: {
     level: "Good",
     sleepHours: 7.3,
-    hrvMs: 64,
+    restingHr: 48,
     summary: "Recovered enough to train hard. Keep one rep in the tank on the top set.",
   },
   bodyWeightLb: 180.4,

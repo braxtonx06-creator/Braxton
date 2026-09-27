@@ -1,17 +1,33 @@
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { Link, Redirect } from "expo-router";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { colors, radius } from "@/components/theme";
 import { placeholderRundown as today } from "@/data/today";
+import { useJournal } from "@/lib/journal";
 
 export default function HomeScreen() {
+  const { journal } = useJournal();
   const { food, readiness } = today;
+
+  if (!journal) return <View style={styles.safe} />;
+  // First open: the coach needs to meet you before it can plan your day.
+  if (!journal.completedAt) return <Redirect href="/onboarding" />;
+
+  const name = journal.answers.name?.trim();
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.date}>{today.date}</Text>
-        <Text style={styles.title}>Today</Text>
+        <View style={styles.header}>
+          <Text style={styles.date}>{today.date}</Text>
+          <Link href="/journal" asChild>
+            <Pressable hitSlop={12}>
+              <Text style={styles.journalLink}>Journal</Text>
+            </Pressable>
+          </Link>
+        </View>
+        <Text style={styles.title}>{name ? `Today, ${name}` : "Today"}</Text>
 
         {/* The one coach sentence */}
         <View style={styles.coach}>
@@ -24,7 +40,7 @@ export default function HomeScreen() {
             <Text style={[styles.big, { color: colors.good }]}>{readiness.level}</Text>
             <View style={styles.stats}>
               <Stat label="Sleep" value={`${readiness.sleepHours} h`} />
-              <Stat label="HRV" value={`${readiness.hrvMs} ms`} />
+              <Stat label="Resting HR" value={`${readiness.restingHr} bpm`} />
               <Stat label="Weight" value={`${today.bodyWeightLb} lb`} />
             </View>
           </View>
@@ -81,7 +97,9 @@ function Stat({ label, value }: { label: string; value: string }) {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 20, gap: 14, paddingBottom: 48 },
+  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   date: { color: colors.muted, fontSize: 14 },
+  journalLink: { color: colors.accent, fontSize: 15, fontWeight: "600" },
   title: { color: colors.text, fontSize: 34, fontWeight: "800", marginBottom: 4 },
   coach: {
     backgroundColor: colors.card,

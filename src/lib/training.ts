@@ -6,7 +6,7 @@ import { useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
 
 import { localDate } from "@/lib/dates";
-import { loadCurrentProgram, loadProgramWorkouts, Program, ProgramWorkoutRef } from "@/lib/program";
+import { loadProgramState, loadProgramWorkouts, Program, ProgramWorkoutRef } from "@/lib/program";
 import { supabase } from "@/lib/supabase";
 
 // ---------- Goals ----------
@@ -19,7 +19,14 @@ export const FOCUSES = [
   { id: "sport", label: "Sport performance", hint: "Train for your sport (MMA, triathlon...)" },
 ] as const;
 
-export type TrainingGoals = { focuses: string[]; primaryFocus: string };
+export type TrainingGoals = {
+  focuses: string[];
+  primaryFocus: string;
+  liftDays: number[]; // 1 = Monday ... 7 = Sunday
+  classDays: number[]; // MMA / combat classes
+  classTime: string;
+  sessionMinutes: number;
+};
 
 async function userId() {
   const { data } = await supabase.auth.getSession();
@@ -32,6 +39,10 @@ export async function saveGoals(goals: TrainingGoals) {
     user_id: await userId(),
     focuses: goals.focuses,
     primary_focus: goals.primaryFocus,
+    lift_days: goals.liftDays,
+    class_days: goals.classDays,
+    class_time: goals.classTime,
+    session_minutes: goals.sessionMinutes,
   });
   if (error) throw error;
 }
@@ -51,6 +62,8 @@ export type PlanExercise = {
   id: string;
   // Which tested number this exercise feeds (e.g. bench_press). Defaults to id.
   metric?: string;
+  group?: string; // superset letter ("A"): same letter = done back to back
+  purpose?: string; // why this exercise is in the session
   name: string;
   kind: "strength" | "measure";
   unit: string;
@@ -74,14 +87,16 @@ export type Workout = {
   plan: WorkoutPlan;
   log: WorkoutLog;
   status: "planned" | "in_progress" | "completed";
+  program_id: string | null;
   program_week: number | null;
+  program_day: number | null;
   results: Result[] | null;
 };
 
 export async function loadWorkout(id: string): Promise<Workout> {
   const { data, error } = await supabase
     .from("workouts")
-    .select("id, kind, title, plan, log, status, program_week, results")
+    .select("id, kind, title, plan, log, status, program_id, program_week, program_day, results")
     .eq("id", id)
     .single();
   if (error) throw error;
@@ -281,13 +296,17 @@ export type TrainingSummary = {
   goals: TrainingGoals | null;
   test: { id: string; status: Workout["status"] } | null;
   baselines: Result[];
-  program: Program | null;
+  program: Program | null; // the active program
+  pending: Program | null; // a program being written, waiting for review, or failed
   programWorkouts: ProgramWorkoutRef[];
 };
 
 export async function loadTrainingSummary(): Promise<TrainingSummary> {
-  const [goals, test, latest, program] = await Promise.all([
-    supabase.from("training_goals").select("focuses, primary_focus").maybeSingle(),
+  const [goals, test, latest, programs] = await Promise.all([
+    supabase
+      .from("training_goals")
+      .select("focuses, primary_focus, lift_days, class_days, class_time, session_minutes")
+      .maybeSingle(),
     supabase
       .from("workouts")
       .select("id, status")
@@ -296,16 +315,26 @@ export async function loadTrainingSummary(): Promise<TrainingSummary> {
       .limit(1)
       .maybeSingle(),
     loadLatestBaselines(),
-    loadCurrentProgram(),
+    loadProgramState(),
   ]);
   for (const r of [goals, test]) if (r.error) throw r.error;
 
   return {
-    goals: goals.data ? { focuses: goals.data.focuses, primaryFocus: goals.data.primary_focus } : null,
+    goals: goals.data
+      ? {
+          focuses: goals.data.focuses,
+          primaryFocus: goals.data.primary_focus,
+          liftDays: goals.data.lift_days ?? [],
+          classDays: goals.data.class_days ?? [],
+          classTime: goals.data.class_time ?? "",
+          sessionMinutes: goals.data.session_minutes ?? 75,
+        }
+      : null,
     test: test.data as TrainingSummary["test"],
     baselines: [...latest.values()],
-    program,
-    programWorkouts: program ? await loadProgramWorkouts(program.id) : [],
+    program: programs.active,
+    pending: programs.pending,
+    programWorkouts: programs.active ? await loadProgramWorkouts(programs.active.id) : [],
   };
 }
 

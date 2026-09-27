@@ -15,6 +15,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ErrorState } from "@/components/ErrorState";
+import { SwapBox } from "@/components/SwapBox";
 import { RestTimer } from "@/components/RestTimer";
 import { colors, radius } from "@/components/theme";
 import {
@@ -31,6 +32,8 @@ import {
   WorkoutLog,
   wasPerformed,
 } from "@/lib/training";
+import { loadTodayCheckIn } from "@/lib/checkIn";
+import { groupLabels, refreshWorkoutFromProgram } from "@/lib/program";
 
 // The whole workout on one screen: every exercise and set is visible, and you
 // fill in what you did as you go. Ticking a set saves it and starts the rest timer.
@@ -45,6 +48,8 @@ export default function WorkoutScreen() {
   const [results, setResults] = useState<Result[] | null>(null);
   // The exercise being typed into gets highlighted, so numbers land in the right card.
   const [activeExercise, setActiveExercise] = useState<string | null>(null);
+  const [swapping, setSwapping] = useState<string | null>(null);
+  const [swapNote, setSwapNote] = useState<string | null>(null);
   const started = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -89,6 +94,13 @@ export default function WorkoutScreen() {
   }
 
   const completed = workout.status === "completed";
+  const labels = groupLabels(workout.plan.exercises);
+  // Program exercises can be swapped until you've logged a set of them.
+  const canSwap = (ex: PlanExercise) =>
+    !completed &&
+    workout.kind === "program" &&
+    !!workout.program_id &&
+    !ex.sets.some((_, i) => wasPerformed(log[setKey(ex.id, i)]));
   const totalSets = workout.plan.exercises.reduce((n, ex) => n + ex.sets.length, 0);
   const doneSets = Object.values(log).filter(wasPerformed).length;
 
@@ -168,10 +180,42 @@ export default function WorkoutScreen() {
             </Text>
           )}
 
-          {workout.plan.exercises.map((ex) => (
+          {swapNote && <Text style={styles.note}>{swapNote}</Text>}
+
+          {workout.plan.exercises.map((ex, exIndex) => (
             <View key={ex.id} style={[styles.card, !completed && activeExercise === ex.id && styles.cardActive]}>
-              <Text style={styles.exName}>{ex.name}</Text>
+              <View style={styles.exHeader}>
+                <Text style={styles.exName}>
+                  {labels[exIndex] ? <Text style={styles.group}>{labels[exIndex]} </Text> : null}
+                  {ex.name}
+                </Text>
+                {canSwap(ex) && (
+                  <Pressable hitSlop={8} onPress={() => setSwapping(swapping === ex.id ? null : ex.id)}>
+                    <Text style={styles.swap}>{swapping === ex.id ? "Cancel" : "Swap"}</Text>
+                  </Pressable>
+                )}
+              </View>
+              {!completed && !!ex.purpose && <Text style={styles.purpose}>{ex.purpose}</Text>}
               {!completed && <Text style={styles.instructions}>{ex.instructions}</Text>}
+              {labels[exIndex] && !completed && (
+                <Text style={styles.rest}>
+                  Superset {ex.group}: alternate with the other {ex.group} exercise{labels.filter((l) => l.startsWith(ex.group ?? "")).length > 2 ? "s" : ""}, rest after the round
+                </Text>
+              )}
+              {swapping === ex.id && workout.program_id && workout.program_day && (
+                <SwapBox
+                  programId={workout.program_id}
+                  dayOfWeek={workout.program_day}
+                  exerciseId={ex.id}
+                  exerciseName={ex.name}
+                  onSwapped={async (r) => {
+                    setSwapping(null);
+                    setSwapNote(`Swapped in ${r.name}. ${r.why}`);
+                    await refreshWorkoutFromProgram(workout, await loadTodayCheckIn());
+                    load();
+                  }}
+                />
+              )}
               {ex.restSeconds > 0 && !completed && (
                 <Text style={styles.rest}>
                   Rest {Math.floor(ex.restSeconds / 60)}:{String(ex.restSeconds % 60).padStart(2, "0")} between sets
@@ -344,7 +388,12 @@ const styles = StyleSheet.create({
   muted: { color: colors.muted, fontSize: 14, lineHeight: 20 },
   progress: { color: colors.text, fontSize: 14, fontWeight: "700" },
   card: { backgroundColor: colors.card, borderRadius: radius, padding: 14, gap: 8 },
-  exName: { color: colors.text, fontSize: 19, fontWeight: "800" },
+  exName: { color: colors.text, fontSize: 19, fontWeight: "800", flexShrink: 1 },
+  exHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 },
+  group: { color: colors.accent, fontWeight: "800" },
+  swap: { color: colors.accent, fontSize: 14, fontWeight: "600" },
+  purpose: { color: colors.text, fontSize: 14, lineHeight: 20 },
+  note: { color: colors.good, fontSize: 14, lineHeight: 20 },
   instructions: { color: colors.muted, fontSize: 14, lineHeight: 20 },
   rest: { color: colors.accent, fontSize: 13, fontWeight: "600" },
   setRow: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: 8, gap: 6 },

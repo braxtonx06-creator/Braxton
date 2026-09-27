@@ -1,15 +1,22 @@
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { colors, radius } from "@/components/theme";
+import { WEEKDAYS_SHORT } from "@/lib/program";
 import { FOCUSES, loadTrainingSummary, saveGoals } from "@/lib/training";
+
+const SESSION_LENGTHS = [45, 60, 75, 90];
 
 // Pick what you're training for; one of them is the main goal.
 export default function GoalsScreen() {
   const [focuses, setFocuses] = useState<string[]>([]);
   const [primary, setPrimary] = useState<string | null>(null);
+  const [liftDays, setLiftDays] = useState<number[]>([]);
+  const [classDays, setClassDays] = useState<number[]>([]);
+  const [classTime, setClassTime] = useState("");
+  const [sessionMinutes, setSessionMinutes] = useState(75);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -20,6 +27,10 @@ export default function GoalsScreen() {
         if (s.goals) {
           setFocuses(s.goals.focuses);
           setPrimary(s.goals.primaryFocus);
+          setLiftDays(s.goals.liftDays);
+          setClassDays(s.goals.classDays);
+          setClassTime(s.goals.classTime);
+          setSessionMinutes(s.goals.sessionMinutes);
         }
       })
       .catch(() => {});
@@ -36,7 +47,7 @@ export default function GoalsScreen() {
     setSaving(true);
     setError(null);
     try {
-      await saveGoals({ focuses, primaryFocus: primary });
+      await saveGoals({ focuses, primaryFocus: primary, liftDays, classDays, classTime: classTime.trim(), sessionMinutes });
       router.canGoBack() ? router.back() : router.replace("/");
     } catch (e) {
       setError(`Couldn't save: ${(e as Error).message}`);
@@ -85,10 +96,42 @@ export default function GoalsScreen() {
           </>
         )}
 
+        <Text style={styles.title2}>Your week</Text>
+        <Text style={styles.muted}>Your coach plans around this exactly, so it never has to guess.</Text>
+
+        <Text style={styles.subtitle}>Which days can you lift?</Text>
+        <DayPicker days={liftDays} onChange={setLiftDays} />
+
+        <Text style={styles.subtitle}>Which days do you have MMA or other classes?</Text>
+        <DayPicker days={classDays} onChange={setClassDays} />
+        {classDays.length > 0 && (
+          <TextInput
+            style={styles.input}
+            value={classTime}
+            onChangeText={setClassTime}
+            placeholder="Class time, e.g. 6:30–8 PM (Sat 10:15 AM)"
+            placeholderTextColor={colors.muted}
+          />
+        )}
+
+        <Text style={styles.subtitle}>How long can a lifting session be?</Text>
+        <View style={styles.chips}>
+          {SESSION_LENGTHS.map((m) => (
+            <Pressable
+              key={m}
+              style={[styles.chip, sessionMinutes === m && styles.chipOn]}
+              onPress={() => setSessionMinutes(m)}
+            >
+              <Text style={[styles.chipText, sessionMinutes === m && styles.chipTextOn]}>{m} min</Text>
+            </Pressable>
+          ))}
+        </View>
+
         {error && <Text style={styles.error}>{error}</Text>}
+        {!liftDays.length && primary && <Text style={styles.muted}>Pick at least one lifting day.</Text>}
         <Pressable
-          style={[styles.button, (!primary || saving) && styles.disabled]}
-          disabled={!primary || saving}
+          style={[styles.button, (!primary || !liftDays.length || saving) && styles.disabled]}
+          disabled={!primary || !liftDays.length || saving}
           onPress={save}
         >
           {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Save goals</Text>}
@@ -98,12 +141,44 @@ export default function GoalsScreen() {
   );
 }
 
+function DayPicker({ days, onChange }: { days: number[]; onChange: (days: number[]) => void }) {
+  return (
+    <View style={styles.days}>
+      {[1, 2, 3, 4, 5, 6, 7].map((d) => {
+        const on = days.includes(d);
+        return (
+          <Pressable
+            key={d}
+            style={[styles.day, on && styles.chipOn]}
+            onPress={() => onChange(on ? days.filter((x) => x !== d) : [...days, d].sort())}
+            accessibilityLabel={WEEKDAYS_SHORT[d]}
+          >
+            <Text style={[styles.chipText, on && styles.chipTextOn]}>{WEEKDAYS_SHORT[d]}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 20, gap: 12, paddingBottom: 48 },
   back: { color: colors.accent, fontSize: 16, fontWeight: "600" },
   title: { color: colors.text, fontSize: 28, fontWeight: "800" },
   subtitle: { color: colors.text, fontSize: 18, fontWeight: "700", marginTop: 8 },
+  title2: { color: colors.text, fontSize: 24, fontWeight: "800", marginTop: 16 },
+  days: { flexDirection: "row", gap: 6 },
+  day: { flex: 1, paddingVertical: 10, borderRadius: 10, backgroundColor: colors.card, alignItems: "center" },
+  input: {
+    backgroundColor: colors.card,
+    color: colors.text,
+    borderRadius: radius,
+    borderWidth: 1,
+    borderColor: colors.line,
+    padding: 14,
+    fontSize: 16,
+  },
   muted: { color: colors.muted, fontSize: 14 },
   option: {
     flexDirection: "row",

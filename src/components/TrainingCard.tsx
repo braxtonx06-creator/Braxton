@@ -4,7 +4,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 
 import { colors, radius } from "@/components/theme";
 import type { CheckIn } from "@/lib/checkIn";
-import { isoWeekday, programWeek, requestProgram, startProgramDay, WEEKDAYS } from "@/lib/program";
+import { groupLabels, isoWeekday, programWeek, requestProgram, startProgramDay, WEEKDAYS } from "@/lib/program";
 import { FOCUSES, formatResult, getTestWorkoutId, TrainingSummary } from "@/lib/training";
 
 // The home screen's training card walks through:
@@ -90,6 +90,7 @@ function ProgramCard({ summary, checkIn }: { summary: TrainingSummary; checkIn: 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const program = summary.program;
+  const pending = summary.pending;
 
   const act = async (action: () => Promise<void>) => {
     setBusy(true);
@@ -102,26 +103,52 @@ function ProgramCard({ summary, checkIn }: { summary: TrainingSummary; checkIn: 
       setBusy(false);
     }
   };
+  // The coach writes in the background; the program screen shows progress.
   const build = () =>
     act(async () => {
       await requestProgram();
       router.push("/program");
     });
 
-  // a) No program yet.
-  if (!program) {
+  // The coach plans around the user's real week, so it needs it before writing a program.
+  if (!program && !pending && !summary.goals?.liftDays.length) {
     return (
       <View style={styles.card}>
         <Text style={styles.title}>YOUR PROGRAM</Text>
-        <Text style={styles.heading}>Build your 4-week program</Text>
+        <Text style={styles.heading}>Set your training days</Text>
         <Text style={styles.body}>
-          Your coach writes it from your numbers, goals and schedule. You review it before it starts.
+          Tell your coach which days you lift and which days you have MMA, so your program fits your real week.
+        </Text>
+        <Button label="Set my week" onPress={() => router.push("/goals")} />
+      </View>
+    );
+  }
+
+  // a) No active program yet: build, wait, review, or retry.
+  if (!program) {
+    const heading =
+      pending?.status === "generating"
+        ? "Your coach is writing your program…"
+        : pending?.status === "draft"
+          ? pending.plan.name
+          : pending?.status === "failed"
+            ? "Writing your program didn't work"
+            : "Build your 4-week program";
+    return (
+      <View style={styles.card}>
+        <Text style={styles.title}>YOUR PROGRAM</Text>
+        <Text style={styles.heading}>{heading}</Text>
+        <Text style={styles.body}>
+          {pending?.status === "draft"
+            ? pending.plan.summary
+            : pending?.status === "generating"
+              ? "This takes a minute or two. It keeps going if you leave the app."
+              : "Built from your numbers, goals and week, with the reason behind every exercise. You review it before it starts."}
         </Text>
         {busy ? (
-          <View style={styles.building}>
-            <ActivityIndicator color={colors.accent} />
-            <Text style={styles.body}>Your coach is writing your program. This can take a minute or two…</Text>
-          </View>
+          <ActivityIndicator color={colors.accent} />
+        ) : pending ? (
+          <Button label={pending.status === "draft" ? "Review program" : "Open"} onPress={() => router.push("/program")} />
         ) : (
           <Button label="Build my program" onPress={build} />
         )}
@@ -130,21 +157,17 @@ function ProgramCard({ summary, checkIn }: { summary: TrainingSummary; checkIn: 
     );
   }
 
-  // b) A draft waiting for approval.
-  if (program.status === "draft") {
-    return (
-      <View style={styles.card}>
-        <Text style={styles.title}>YOUR PROGRAM</Text>
-        <Text style={styles.heading}>{program.plan.name}</Text>
-        <Text style={styles.body}>{program.plan.summary}</Text>
-        <Button label="Review program" onPress={() => router.push("/program")} />
-      </View>
-    );
-  }
-
   const week = programWeek(program);
+  const revision =
+    pending?.revision_of === program.id
+      ? pending.status === "draft"
+        ? "Your revised program is ready to review"
+        : pending.status === "generating"
+          ? "Your coach is revising your program…"
+          : "Revising your program didn't work"
+      : null;
 
-  // c) The 4 weeks are over (the monthly review comes in the next milestone).
+  // b) The 4 weeks are over (the monthly review comes in the next milestone).
   if (week > 4) {
     return (
       <View style={styles.card}>
@@ -157,7 +180,7 @@ function ProgramCard({ summary, checkIn }: { summary: TrainingSummary; checkIn: 
     );
   }
 
-  // d) Active: today's session, or the next one.
+  // c) Active: today's session, or the next one.
   const today = isoWeekday();
   const day = program.plan.days.find((d) => d.dayOfWeek === today);
   const workout = day && summary.programWorkouts.find((w) => w.week === week && w.day === day.dayOfWeek);
@@ -177,20 +200,36 @@ function ProgramCard({ summary, checkIn }: { summary: TrainingSummary; checkIn: 
           <Text style={styles.link}>Full program</Text>
         </Pressable>
       </View>
+      {revision && (
+        <Pressable onPress={() => router.push("/program")}>
+          <Text style={styles.focus}>{revision} ›</Text>
+        </Pressable>
+      )}
       {day ? (
         <>
           <Text style={styles.heading}>{day.title}</Text>
           {!!day.timing && <Text style={styles.focus}>{day.timing}</Text>}
-          {day.exercises.map((ex) => (
-            <Text key={ex.id} style={styles.body}>
-              {ex.name} · {ex.kind === "conditioning" ? `${ex.sets} round${ex.sets === 1 ? "" : "s"}` : `${ex.sets} × ${ex.reps}`}
+          {!!day.purpose && <Text style={styles.body}>{day.purpose}</Text>}
+          {day.exercises.map((ex, i) => (
+            <Text key={ex.id} style={styles.exerciseLine}>
+              {groupLabels(day.exercises)[i] ? `${groupLabels(day.exercises)[i]}  ` : ""}
+              {ex.name} ·{" "}
+              {ex.kind === "conditioning"
+                ? `${ex.sets} round${ex.sets === 1 ? "" : "s"}`
+                : `${ex.sets} × ${ex.reps}`}
             </Text>
           ))}
           {busy ? (
             <ActivityIndicator color={colors.accent} />
           ) : (
             <Button
-              label={workout?.status === "completed" ? "View workout" : workout ? "Continue workout" : "Start workout"}
+              label={
+                workout?.status === "completed"
+                  ? "View workout"
+                  : workout?.status === "in_progress"
+                    ? "Continue workout"
+                    : "Start workout"
+              }
               onPress={open}
             />
           )}
@@ -199,7 +238,8 @@ function ProgramCard({ summary, checkIn }: { summary: TrainingSummary; checkIn: 
         <>
           <Text style={styles.heading}>No lifting today</Text>
           <Text style={styles.body}>
-            Recover and hit your class if you have one. Next up: {WEEKDAYS[next.dayOfWeek]}, {next.title}.
+            Recover{summary.goals?.classDays.includes(today) ? " and hit your class" : ""}. Next up: {WEEKDAYS[next.dayOfWeek]},{" "}
+            {next.title}.
           </Text>
         </>
       )}
@@ -275,6 +315,7 @@ const styles = StyleSheet.create({
   buttonText: { color: "#fff", fontSize: 16, fontWeight: "700" },
   error: { color: "#F87171", fontSize: 14 },
   retake: { color: colors.muted, fontSize: 14, fontWeight: "600", textAlign: "center" },
+  exerciseLine: { color: colors.text, fontSize: 15, lineHeight: 21 },
   resultRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline" },
   resultName: { color: colors.text, fontSize: 16, fontWeight: "600", flexShrink: 1 },
   resultValue: { color: colors.text, fontSize: 20, fontWeight: "800" },

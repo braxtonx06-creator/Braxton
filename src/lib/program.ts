@@ -1,21 +1,24 @@
-// The 4-week program: loading it, approving it, and turning a program day into
-// a workout with suggested weights.
+// The 4-week program: requesting, reviewing, revising and swapping, and turning
+// a program day into a workout with suggested weights.
 //
-// The coach (the `program` Edge Function) writes sets, reps and target RPE.
-// The weights are calculated here from the user's estimated maxes, so they are
-// exact, move with the week's progression, and drop a little after a bad night.
+// The coach (the `program` Edge Function) writes sets, reps, target RPE,
+// supersets and the purpose of everything. The weights are calculated here from
+// the user's estimated maxes, so they are exact, move with the week's
+// progression, and drop a little after a bad night.
 
 import { FunctionsHttpError } from "@supabase/supabase-js";
 
 import type { CheckIn } from "@/lib/checkIn";
 import { localDate } from "@/lib/dates";
 import { supabase } from "@/lib/supabase";
-import { loadLatestBaselines, PlanExercise, Result, weightFor, WorkoutPlan } from "@/lib/training";
+import { loadLatestBaselines, PlanExercise, Result, weightFor, Workout, WorkoutPlan } from "@/lib/training";
 
 export type ProgramExercise = {
   id: string;
   name: string;
-  kind: "strength" | "bodyweight" | "conditioning";
+  kind: "strength" | "bodyweight" | "power" | "conditioning";
+  group?: string; // superset letter, "" = straight sets (older programs don't have it)
+  purpose?: string;
   baselineMetric: string;
   sets: number;
   reps: number;
@@ -27,54 +30,69 @@ export type ProgramExercise = {
   notes: string;
 };
 
-export type ProgramDay = { dayOfWeek: number; title: string; timing: string; exercises: ProgramExercise[] };
+export type ProgramDay = {
+  dayOfWeek: number;
+  title: string;
+  timing: string;
+  purpose?: string;
+  exercises: ProgramExercise[];
+};
 
 export type ProgramPlan = {
   name: string;
   summary: string;
+  rationale?: string[];
   weeks: { week: number; focus: string; rpeShift: number }[];
   days: ProgramDay[];
+  changes?: string[]; // revisions: what changed and why
 };
 
 export type Program = {
   id: string;
-  status: "draft" | "active" | "replaced" | "completed";
+  status: "generating" | "failed" | "draft" | "active" | "replaced" | "completed";
   name: string;
   plan: ProgramPlan;
   starts_on: string | null;
+  revision_of: string | null;
+  request: string | null;
+  error: string | null;
+  created_at: string;
 };
 
 export type ProgramWorkoutRef = { id: string; week: number; day: number; status: string };
 
 export const WEEKDAYS = ["", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+export const WEEKDAYS_SHORT = ["", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 // 1 = Monday ... 7 = Sunday.
 export const isoWeekday = (d = new Date()) => ((d.getDay() + 6) % 7) + 1;
 
-// ---------- Loading and approving ----------
+const COLUMNS = "id, status, name, plan, starts_on, revision_of, request, error, created_at";
 
-// The program the home screen should show: the active one, else a draft to review.
-export async function loadCurrentProgram(): Promise<Program | null> {
+// ---------- Loading ----------
+
+// The active program, plus the newest program that's being written, waiting
+// for review, or failed (a first program or a requested revision).
+export async function loadProgramState(): Promise<{ active: Program | null; pending: Program | null }> {
   const { data, error } = await supabase
     .from("programs")
-    .select("id, status, name, plan, starts_on")
-    .in("status", ["active", "draft"])
+    .select(COLUMNS)
+    .in("status", ["active", "draft", "generating", "failed"])
     .order("created_at", { ascending: false });
   if (error) throw error;
   const rows = (data ?? []) as Program[];
-  return rows.find((p) => p.status === "active") ?? rows[0] ?? null;
+  const active = rows.find((p) => p.status === "active") ?? null;
+  const newest = rows.find((p) => p.status !== "active") ?? null;
+  // A failed attempt older than the active program is history, not news.
+  const pending =
+    newest && !(newest.status === "failed" && active && newest.created_at < active.created_at) ? newest : null;
+  return { active, pending };
 }
 
-export async function loadDraftProgram(): Promise<Program | null> {
-  const { data, error } = await supabase
-    .from("programs")
-    .select("id, status, name, plan, starts_on")
-    .eq("status", "draft")
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+export async function loadProgram(id: string): Promise<Program> {
+  const { data, error } = await supabase.from("programs").select(COLUMNS).eq("id", id).single();
   if (error) throw error;
-  return data as Program | null;
+  return data as Program;
 }
 
 export async function loadProgramWorkouts(programId: string): Promise<ProgramWorkoutRef[]> {
@@ -86,19 +104,55 @@ export async function loadProgramWorkouts(programId: string): Promise<ProgramWor
   return (data ?? []).map((w) => ({ id: w.id, week: w.program_week, day: w.program_day, status: w.status }));
 }
 
-// Asks the program Edge Function for a program (or the existing draft).
-export async function requestProgram(): Promise<string> {
-  const { data, error } = await supabase.functions.invoke<{ programId: string }>("program", { body: {} });
+// ---------- Asking the coach ----------
+
+async function callProgramFunction<T>(body: Record<string, unknown>): Promise<T> {
+  const { data, error } = await supabase.functions.invoke<T>("program", { body });
   if (error) {
     if (error instanceof FunctionsHttpError) {
-      const body = await error.context.json().catch(() => null);
-      throw new Error(body?.error ?? error.message);
+      const payload = await error.context.json().catch(() => null);
+      throw new Error(payload?.error ?? error.message);
     }
     throw error;
   }
-  if (!data?.programId) throw new Error("The coach returned no program");
-  return data.programId;
+  if (!data) throw new Error("The coach returned nothing");
+  return data;
 }
+
+// Starts writing a program (or returns the one already being written or reviewed).
+export async function requestProgram(): Promise<string> {
+  return (await callProgramFunction<{ programId: string }>({ mode: "new" })).programId;
+}
+
+// Asks the coach to rewrite a program from the user's feedback (becomes a draft to approve).
+export async function requestRevision(programId: string, feedback: string): Promise<string> {
+  return (await callProgramFunction<{ programId: string }>({ mode: "revise", programId, feedback })).programId;
+}
+
+// Programs are written in the background; check every few seconds until done.
+export async function waitForProgram(id: string, timeoutMs = 5 * 60_000): Promise<Program> {
+  const started = Date.now();
+  for (;;) {
+    const program = await loadProgram(id);
+    if (program.status === "failed") throw new Error(program.error ?? "The coach couldn't write the program");
+    if (program.status !== "generating") return program;
+    if (Date.now() - started > timeoutMs) throw new Error("This is taking longer than usual. Check back in a minute.");
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+  }
+}
+
+// Replaces one exercise with one that serves the same purpose.
+export async function swapExercise(programId: string, dayOfWeek: number, exerciseId: string, reason: string) {
+  return callProgramFunction<{ exercise: ProgramExercise; replacedId: string; why: string }>({
+    mode: "swap",
+    programId,
+    dayOfWeek,
+    exerciseId,
+    reason,
+  });
+}
+
+// ---------- Approving ----------
 
 // Monday of this week, so program days line up with real weekdays.
 function mondayOfThisWeek() {
@@ -107,19 +161,31 @@ function mondayOfThisWeek() {
   return localDate(d);
 }
 
-// The user approves the draft: it becomes the active program, starting this week.
-export async function approveProgram(id: string) {
+// A new program becomes active from this week. An approved revision updates
+// the program it revises in place, so the block keeps its week count and
+// logged workouts.
+export async function approveProgram(program: Program) {
+  if (program.revision_of) {
+    const { error } = await supabase
+      .from("programs")
+      .update({ plan: program.plan, name: program.plan.name })
+      .eq("id", program.revision_of);
+    if (error) throw error;
+    const { error: doneError } = await supabase.from("programs").update({ status: "replaced" }).eq("id", program.id);
+    if (doneError) throw doneError;
+    return;
+  }
   const { error: oldError } = await supabase.from("programs").update({ status: "replaced" }).eq("status", "active");
   if (oldError) throw oldError;
   const { error } = await supabase
     .from("programs")
     .update({ status: "active", starts_on: mondayOfThisWeek() })
-    .eq("id", id);
+    .eq("id", program.id);
   if (error) throw error;
 }
 
-// The user wants a different program: drop the draft so a new one gets written.
-export async function discardDraft(id: string) {
+// Drop a draft or a failed attempt.
+export async function discardProgram(id: string) {
   const { error } = await supabase.from("programs").update({ status: "replaced" }).eq("id", id);
   if (error) throw error;
 }
@@ -160,6 +226,24 @@ export function suggestedWeight(ex: ProgramExercise, rpe: number, baselines: Map
   return base && /est\. max/.test(base.unit) ? weightFor(base.value, ex.reps, rpe) : 0;
 }
 
+// Superset position labels: A1, A2 ... for grouped exercises, "" otherwise.
+export function groupLabels(exercises: { group?: string }[]): string[] {
+  const counts: Record<string, number> = {};
+  return exercises.map((ex) => {
+    const g = ex.group?.trim();
+    if (!g || exercises.filter((e) => e.group?.trim() === g).length < 2) return "";
+    counts[g] = (counts[g] ?? 0) + 1;
+    return `${g}${counts[g]}`;
+  });
+}
+
+// Short prescription used on the program and home screens.
+export function describeExercise(ex: ProgramExercise, rpe: number, weight: number) {
+  if (ex.kind === "conditioning") return `${ex.sets} × ${ex.target}`;
+  if (ex.kind === "power") return `${ex.sets} × ${ex.reps}${ex.target ? ` · ${ex.target}` : ""}`;
+  return `${ex.sets} × ${ex.reps} @ RPE ${fmtRpe(rpe)}${weight ? ` · ~${weight} lb` : ""}`;
+}
+
 export function buildSessionPlan(
   plan: ProgramPlan,
   day: ProgramDay,
@@ -170,6 +254,7 @@ export function buildSessionPlan(
   const weekInfo = plan.weeks.find((w) => w.week === week);
   const intro = [
     `Week ${week}${weekInfo?.focus ? `: ${weekInfo.focus}` : ""}.`,
+    day.purpose,
     day.timing,
     adjust.note,
     "Suggested weights come from your estimated maxes; blank boxes mean pick a weight that fits the target.",
@@ -179,35 +264,35 @@ export function buildSessionPlan(
 
   const exercises: PlanExercise[] = day.exercises.map((ex) => {
     const instructions = [ex.target, ex.notes].filter(Boolean).join(". ");
-    if (ex.kind === "conditioning") {
+    const shared = { id: ex.id, name: ex.name, group: ex.group, purpose: ex.purpose, instructions, restSeconds: ex.restSeconds };
+
+    // Jumps, throws, sprints and conditioning: record a result per set or round.
+    if (ex.kind === "conditioning" || ex.kind === "power") {
+      const power = ex.kind === "power";
       return {
-        id: ex.id,
-        name: ex.name,
+        ...shared,
+        metric: ex.baselineMetric || ex.id,
         kind: "measure",
         unit: ex.unit || "seconds",
         better: ex.better,
-        instructions,
-        restSeconds: ex.restSeconds,
         sets: Array.from({ length: ex.sets }, (_, i) => ({
-          label: `Round ${i + 1}`,
-          target: ex.target,
+          label: power ? `Set ${i + 1}` : `Round ${i + 1}`,
+          target: power ? `${ex.reps} reps · record your best` : ex.target,
           isTest: false,
           suggestedWeight: 0,
           targetReps: 0,
         })),
       };
     }
+
     const rpe = exerciseRpe(ex, plan, week, adjust.rpe);
     const weight = suggestedWeight(ex, rpe, baselines);
     return {
-      id: ex.id,
+      ...shared,
       metric: ex.baselineMetric || ex.id,
-      name: ex.name,
       kind: "strength",
       unit: "lb",
       better: "higher",
-      instructions,
-      restSeconds: ex.restSeconds,
       sets: Array.from({ length: ex.sets }, (_, i) => ({
         label: `Set ${i + 1}`,
         target: `${ex.reps} reps · RPE ${fmtRpe(rpe)}${ex.kind === "bodyweight" ? " · add weight if needed" : ""}`,
@@ -222,7 +307,9 @@ export function buildSessionPlan(
   return { title: day.title, intro, exercises };
 }
 
-// Opens (or creates) the workout for one program day in a given week.
+// Opens the workout for one program day in a given week. A workout that
+// hasn't been started yet is rebuilt, so it reflects swaps, revisions and
+// this morning's check-in.
 export async function startProgramDay(
   program: Program,
   week: number,
@@ -231,17 +318,23 @@ export async function startProgramDay(
 ): Promise<string> {
   const { data: existing, error: findError } = await supabase
     .from("workouts")
-    .select("id")
+    .select("id, status")
     .eq("program_id", program.id)
     .eq("program_week", week)
     .eq("program_day", day.dayOfWeek)
     .maybeSingle();
   if (findError) throw findError;
-  if (existing) return existing.id;
+  if (existing && existing.status !== "planned") return existing.id;
 
   const [{ data: session }, baselines] = await Promise.all([supabase.auth.getSession(), loadLatestBaselines()]);
   if (!session.session) throw new Error("Not signed in");
   const plan = buildSessionPlan(program.plan, day, week, baselines, checkInAdjustment(checkIn));
+
+  if (existing) {
+    const { error } = await supabase.from("workouts").update({ title: plan.title, plan }).eq("id", existing.id);
+    if (error) throw error;
+    return existing.id;
+  }
 
   const { data, error } = await supabase
     .from("workouts")
@@ -258,4 +351,17 @@ export async function startProgramDay(
     .single();
   if (error) throw error;
   return data.id;
+}
+
+// After a swap during a workout: rebuild the plan from the program but keep
+// everything already logged (logs are keyed by exercise id, which don't change
+// for the exercises that stayed).
+export async function refreshWorkoutFromProgram(workout: Workout, checkIn: CheckIn | null): Promise<void> {
+  if (!workout.program_id || !workout.program_week || !workout.program_day) return;
+  const [program, baselines] = await Promise.all([loadProgram(workout.program_id), loadLatestBaselines()]);
+  const day = program.plan.days.find((d) => d.dayOfWeek === workout.program_day);
+  if (!day) return;
+  const plan = buildSessionPlan(program.plan, day, workout.program_week, baselines, checkInAdjustment(checkIn));
+  const { error } = await supabase.from("workouts").update({ plan }).eq("id", workout.id);
+  if (error) throw error;
 }

@@ -247,7 +247,13 @@ export function computeResults(plan: WorkoutPlan, log: WorkoutLog): Result[] {
       better: ex.better,
     });
   }
-  return results;
+  // One number per metric: a top set and its back-off sets both feed the same lift.
+  const best = new Map<string, Result>();
+  for (const r of results.map((r) => ({ ...r, name: r.name.replace(/\s*\((top set|back-off)\)\s*$/i, "") }))) {
+    const seen = best.get(r.metric);
+    if (!seen || beats(r, seen)) best.set(r.metric, r);
+  }
+  return [...best.values()];
 }
 
 // Latest saved number per metric (newest first).

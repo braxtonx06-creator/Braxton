@@ -52,6 +52,7 @@ Program design (make it professional):
 - Periodization: weeks 1-3 build via rpeShift (e.g. -1, 0, +0.5) and week 4 deloads (e.g. -2). Each week gets a one-line focus.
 - Order within a day: power/speed first while fresh, then main strength lifts, then accessories/hypertrophy, then conditioning.
 - Supersets and circuits: pair exercises that don't compete (antagonist push/pull, upper/lower, or a main lift with a mobility/core filler) to raise density without hurting quality. Give paired exercises the same group letter ("A", "B", ...); leave group "" for straight sets. Inside a group, give every exercise except the last a short restSeconds (0-45, the transition) and the last one the full rest for the round. Never superset two heavy compound lifts, and never put a max-effort or power lift in a circuit.
+- Main lifts for their main goal (e.g. bench for a bench goal): write them the way a strength coach does, as two entries in a row with the same baselineMetric: a top set named like "Bench Press (top set)" (1 set of 1-3 reps at RPE 8.5-9) and then back-off sets named like "Bench Press (back-off)" (3-4 sets of 4-6 reps at RPE 7-8). The weekly rpeShift makes the top-set weight climb toward their goal; say so in its purpose.
 - Volume and intensity: main lifts at 3-6 reps around RPE 7-9; hypertrophy work 6-15 reps around RPE 7-9; roughly 10-20 hard sets per major muscle group per week across the program.
 - Conditioning matched to their sport: alactic power (short all-out efforts with long rest), glycolytic intervals (work capacity, like rounds), and aerobic base (easy steady work that speeds recovery). Say which system each piece trains in its purpose.
 - Manage the interference between lifting, conditioning and their sport: fatigue should never land right before hard sessions.
@@ -359,7 +360,7 @@ function friendlyError(error: unknown): { message: string; status: number } {
   return { message: "Something went wrong, try again", status: 500 };
 }
 
-const BLOCK_TASK = `Plan the block first. For each training day give its dayOfWeek, title, timing, purpose, and in "plan" a compact outline of the session in order (e.g. "A1 trap bar jump 4x3 / A2 ankle hops; B main: bench 4x5 RPE 8; C1 DB row / C2 push-up superset; finisher: air bike alactic 8x8s"). Another coach will write each day's exact exercises from your outline, so make the weekly picture (volume per muscle group, fatigue around class) add up across the days.`;
+const BLOCK_TASK = `Plan the block first. For each training day give its dayOfWeek, title, timing, purpose, and in "plan" a compact outline of the session in order (e.g. "A1 trap bar jump 4x3 / A2 ankle hops; B bench top set 1x2 RPE 9 then back-off 3x5 RPE 7.5; C1 DB row / C2 push-up superset; finisher: air bike alactic 8x8s"). Another coach will write each day's exact exercises from your outline, so make the weekly picture (volume per muscle group, fatigue around class) add up across the days.`;
 
 function dayTask(block: Block, day: DayPlan) {
   const outline = block.days.map((d) => `- ${WEEKDAYS[d.dayOfWeek]}: ${d.title}. ${d.purpose} Outline: ${d.plan}`).join("\n");

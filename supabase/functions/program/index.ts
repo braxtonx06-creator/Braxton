@@ -599,8 +599,9 @@ Deno.serve(async (req) => {
       const { data: rows, error } = await supabase
         .from("coach_chats")
         .insert([
-          { user_id: userId, role: "user", content: message, created_at: sentAt },
-          { user_id: userId, role: "coach", content: reply, proposal: proposal || null },
+          // Both rows list the same columns: in a multi-row insert a missing one is saved as null, not its default.
+          { user_id: userId, role: "user", content: message, proposal: null, created_at: sentAt },
+          { user_id: userId, role: "coach", content: reply, proposal: proposal || null, created_at: new Date().toISOString() },
         ])
         .select("id, role, content, proposal, created_at");
       if (error) return json({ error: error.message }, 500);

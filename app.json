@@ -23,7 +23,14 @@
     },
     "plugins": [
       "expo-router",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Personal O.S uses your photos to log meals.",
+          "cameraPermission": "Personal O.S uses the camera to snap your meals."
+        }
+      ]
     ],
     "scheme": "personal-os"
   }

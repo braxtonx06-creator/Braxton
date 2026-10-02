@@ -13,11 +13,14 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import Svg, { Path } from "react-native-svg";
 
 import { ErrorState } from "@/components/ErrorState";
-import { colors, disabledFill, disabledText, radius } from "@/components/theme";
+import { colors, disabledFill, disabledText, fonts } from "@/components/theme";
 import { ChatMessage, clearChat, loadChat, sendChat } from "@/lib/chat";
+import { useTodayCheckIn } from "@/lib/checkIn";
 import { loadProgramState, requestRevision } from "@/lib/program";
+import { readinessFrom } from "@/lib/readiness";
 
 const STARTERS = [
   "What should I eat before MMA tonight?",
@@ -40,6 +43,8 @@ export default function ChatScreen() {
   const [sending, setSending] = useState(false);
   const [rewriting, setRewriting] = useState(false);
   const scroll = useRef<ScrollView>(null);
+  const { checkIn } = useTodayCheckIn();
+  const tint = checkIn ? readinessFrom(checkIn).color : colors.accent;
 
   const load = useCallback(() => {
     setError(null);
@@ -90,7 +95,7 @@ export default function ChatScreen() {
   if (!loaded) {
     return (
       <View style={[styles.safe, styles.center]}>
-        <ActivityIndicator color={colors.accent} />
+        <ActivityIndicator color={colors.muted} />
       </View>
     );
   }
@@ -126,9 +131,15 @@ export default function ChatScreen() {
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <View style={styles.header}>
-          <Pressable onPress={back} hitSlop={8}>
-            <Text style={styles.back}>‹ Back</Text>
+          <Pressable style={styles.close} onPress={back} hitSlop={8} accessibilityLabel="Close chat">
+            <Svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke={colors.text} strokeWidth={2}>
+              <Path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
+            </Svg>
           </Pressable>
+          <View style={styles.headerText}>
+            <Text style={styles.title}>Coach</Text>
+            <Text style={styles.subtitle}>Knows your program, check-ins and goals</Text>
+          </View>
           {messages.length > 0 && (
             <Pressable onPress={startOver} hitSlop={8} disabled={sending}>
               <Text style={styles.muted}>Start over</Text>
@@ -142,15 +153,9 @@ export default function ChatScreen() {
           keyboardShouldPersistTaps="handled"
           onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: true })}
         >
-          <Text style={styles.kicker}>COACH</Text>
-          <Text style={styles.title}>Your coach</Text>
-          <Text style={styles.body}>
-            Ask about training, food, sleep or recovery. If you agree on a program change, you can have the program
-            rewritten, and you'll review it before it's used.
-          </Text>
-
           {messages.length === 0 && !sending && (
             <View style={styles.starters}>
+              <Text style={styles.muted}>Ask about training, food, sleep or recovery.</Text>
               {STARTERS.map((s) => (
                 <Pressable key={s} style={styles.starter} onPress={() => send(s)} disabled={sending}>
                   <Text style={styles.starterText}>{s}</Text>
@@ -159,34 +164,41 @@ export default function ChatScreen() {
             </View>
           )}
 
-          {messages.map((m) => (
-            <View key={m.id} style={[styles.bubble, m.role === "user" ? styles.mine : styles.theirs]}>
-              <Text style={styles.bubbleText}>{m.content}</Text>
-              {m.role === "coach" && m.proposal && (
-                <View style={styles.proposal}>
-                  <Text style={styles.proposalLabel}>PROPOSED CHANGE</Text>
-                  <Text style={styles.proposalText}>{m.proposal}</Text>
-                  {m === lastCoach && programId && (
-                    <Pressable
-                      style={[styles.button, sending && !rewriting && disabledFill]}
-                      disabled={rewriting || sending}
-                      onPress={() => rewrite(m.proposal!)}
-                    >
-                      {rewriting ? (
-                        <ActivityIndicator color={colors.onAccent} />
-                      ) : (
-                        <Text style={[styles.buttonText, sending && disabledText]}>Rewrite my program</Text>
-                      )}
-                    </Pressable>
-                  )}
-                </View>
-              )}
-            </View>
-          ))}
+          {messages.map((m) =>
+            m.role === "user" ? (
+              <View key={m.id} style={[styles.bubble, styles.mine, { backgroundColor: tint }]}>
+                <Text style={styles.mineText}>{m.content}</Text>
+              </View>
+            ) : (
+              <View key={m.id} style={[styles.bubble, styles.theirs]}>
+                <Text style={[styles.theirsText, styles.pad]}>{m.content}</Text>
+                {m.proposal && (
+                  <View style={styles.proposal}>
+                    <Text style={styles.proposalLabel}>PROPOSED CHANGE</Text>
+                    <Text style={styles.proposalText}>{m.proposal}</Text>
+                    {m === lastCoach && programId && (
+                      <Pressable
+                        style={[styles.button, sending && !rewriting && disabledFill]}
+                        disabled={rewriting || sending}
+                        onPress={() => rewrite(m.proposal!)}
+                      >
+                        {rewriting ? (
+                          <ActivityIndicator color={colors.bg} />
+                        ) : (
+                          <Text style={[styles.buttonText, sending && disabledText]}>Rewrite my program</Text>
+                        )}
+                      </Pressable>
+                    )}
+                    <Text style={styles.hint}>You review it before anything changes.</Text>
+                  </View>
+                )}
+              </View>
+            ),
+          )}
 
           {sending && (
-            <View style={[styles.bubble, styles.theirs, styles.row]}>
-              <ActivityIndicator color={colors.accent} />
+            <View style={[styles.bubble, styles.theirs, styles.row, styles.pad]}>
+              <ActivityIndicator color={colors.muted} />
               <Text style={styles.muted}>Your coach is thinking…</Text>
             </View>
           )}
@@ -198,16 +210,24 @@ export default function ChatScreen() {
             value={text}
             onChangeText={setText}
             placeholder="Message your coach"
-            placeholderTextColor={colors.muted}
+            placeholderTextColor={colors.faint}
             multiline
             maxLength={2000}
           />
           <Pressable
-            style={[styles.send, (!text.trim() || sending) && disabledFill]}
+            style={[styles.send, { backgroundColor: tint }, (!text.trim() || sending) && disabledFill]}
             disabled={!text.trim() || sending}
             onPress={() => send(text)}
+            accessibilityLabel="Send"
           >
-            <Text style={[styles.buttonText, (!text.trim() || sending) && disabledText]}>Send</Text>
+            <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" strokeWidth={2.2}>
+              <Path
+                d="M12 19V5M5 12l7-7 7 7"
+                stroke={!text.trim() || sending ? colors.faint : colors.onAccent}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </Svg>
           </Pressable>
         </View>
       </KeyboardAvoidingView>
@@ -218,44 +238,79 @@ export default function ChatScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   center: { alignItems: "center", justifyContent: "center" },
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingVertical: 10 },
-  back: { color: colors.accent, fontSize: 16, fontWeight: "600" },
-  content: { paddingHorizontal: 20, paddingBottom: 20, gap: 10 },
-  kicker: { color: colors.accent, fontSize: 12, fontWeight: "800", letterSpacing: 1 },
-  title: { color: colors.text, fontSize: 28, fontWeight: "800" },
-  body: { color: colors.muted, fontSize: 15, lineHeight: 21 },
-  muted: { color: colors.muted, fontSize: 14 },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.line,
+  },
+  close: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.card,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerText: { flex: 1, gap: 2 },
+  title: { color: colors.text, fontFamily: fonts.heavy, fontSize: 18 },
+  subtitle: { color: colors.muted, fontFamily: fonts.medium, fontSize: 12 },
+  content: { paddingHorizontal: 16, paddingVertical: 18, gap: 12 },
+  muted: { color: colors.muted, fontFamily: fonts.medium, fontSize: 14 },
   row: { flexDirection: "row", alignItems: "center", gap: 8 },
-  starters: { gap: 8, marginTop: 6 },
-  starter: { borderWidth: 1, borderColor: colors.line, borderRadius: 12, padding: 12 },
-  starterText: { color: colors.text, fontSize: 15 },
-  bubble: { borderRadius: radius, padding: 12, maxWidth: "88%", gap: 8 },
-  mine: { alignSelf: "flex-end", backgroundColor: colors.accent },
-  theirs: { alignSelf: "flex-start", backgroundColor: colors.card },
-  bubbleText: { color: colors.text, fontSize: 15, lineHeight: 21 },
-  proposal: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: 8, gap: 6 },
-  proposalLabel: { color: colors.accent, fontSize: 11, fontWeight: "800", letterSpacing: 1 },
-  proposalText: { color: colors.text, fontSize: 14, lineHeight: 20 },
-  button: { backgroundColor: colors.accent, borderRadius: 12, paddingVertical: 12, alignItems: "center" },
-  buttonText: { color: colors.onAccent, fontSize: 16, fontWeight: "700" },
+  starters: { gap: 8 },
+  starter: { backgroundColor: colors.card, borderRadius: 18, paddingVertical: 12, paddingHorizontal: 14 },
+  starterText: { color: colors.text, fontFamily: fonts.semibold, fontSize: 15 },
+  bubble: { borderRadius: 18, overflow: "hidden" },
+  pad: { paddingHorizontal: 14, paddingVertical: 12 },
+  mine: {
+    alignSelf: "flex-end",
+    maxWidth: "80%",
+    borderBottomRightRadius: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  mineText: { color: colors.onAccent, fontFamily: fonts.medium, fontSize: 15, lineHeight: 21 },
+  theirs: { alignSelf: "flex-start", maxWidth: "86%", backgroundColor: colors.card, borderBottomLeftRadius: 6 },
+  theirsText: { color: colors.text, fontFamily: fonts.regular, fontSize: 15, lineHeight: 21 },
+  proposal: { backgroundColor: colors.raised, paddingHorizontal: 14, paddingVertical: 12, gap: 8 },
+  proposalLabel: { color: colors.text, fontFamily: fonts.heavy, fontSize: 11, letterSpacing: 1 },
+  proposalText: { color: colors.soft, fontFamily: fonts.regular, fontSize: 14, lineHeight: 20 },
+  button: {
+    backgroundColor: colors.text,
+    borderRadius: 12,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  buttonText: { color: colors.bg, fontFamily: fonts.heavy, fontSize: 15 },
+  hint: { color: colors.faint, fontFamily: fonts.medium, fontSize: 12 },
   composer: {
     flexDirection: "row",
     alignItems: "flex-end",
     gap: 8,
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingVertical: 10,
+    borderTopWidth: 1,
     borderTopColor: colors.line,
   },
   input: {
     flex: 1,
+    minHeight: 46,
+    maxHeight: 120,
     backgroundColor: colors.card,
     color: colors.text,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderRadius: 23,
+    borderWidth: 1,
+    borderColor: colors.line,
+    paddingHorizontal: 16,
+    paddingTop: 13,
+    paddingBottom: 12,
+    fontFamily: fonts.regular,
     fontSize: 15,
-    maxHeight: 120,
   },
-  send: { backgroundColor: colors.accent, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 11 },
+  send: { width: 46, height: 46, borderRadius: 23, alignItems: "center", justifyContent: "center" },
 });

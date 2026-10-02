@@ -9,11 +9,13 @@
 // - { mode: "new" }                              write a program
 // - { mode: "revise", programId, feedback }      rewrite a program from the user's feedback
 // - { mode: "swap", programId, dayOfWeek, exerciseId, reason }  replace one exercise
+// - { mode: "chat", programId, message }         talk about the program
 //
 // "new" and "revise" take a minute or two, longer than a phone keeps a request
 // open, so they save a 'generating' row, reply at once, and finish in the
 // background (EdgeRuntime.waitUntil). The app polls the row until it's a
-// 'draft' (or 'failed'). "swap" is small and answers directly.
+// 'draft' (or 'failed'). "swap" and "chat" are small and answer directly; an
+// agreed change in chat comes back as a proposal the app sends to "revise".
 //
 // Supabase stops a function after 150 seconds, and one call writing a whole
 // program can take longer. So a program is written in two stages: first the
@@ -164,6 +166,14 @@ const DAY_SCHEMA = {
   type: "object",
   properties: { exercises: { type: "array", items: EXERCISE_SCHEMA } },
   required: ["exercises"],
+  additionalProperties: false,
+};
+
+// Chat: the coach's reply, plus a change request when they've agreed on one.
+const CHAT_SCHEMA = {
+  type: "object",
+  properties: { reply: { type: "string" }, proposal: { type: "string" } },
+  required: ["reply", "proposal"],
   additionalProperties: false,
 };
 
@@ -401,14 +411,19 @@ async function writeProgram(anthropic: Anthropic, ctx: Context): Promise<Program
   return writeDays(anthropic, ctx, block, () => "", () => null);
 }
 
-async function reviseProgram(anthropic: Anthropic, ctx: Context, current: Program, feedback: string): Promise<Program> {
-  const outline = current.days
-    .map((d) => `- ${WEEKDAYS[d.dayOfWeek]}: ${d.title}. ${d.purpose}\n  ${d.exercises.map((e) => `${e.group ? `${e.group} ` : ""}${e.name} ${e.sets}x${e.reps || e.target}`).join("; ")}`)
+// The current program in a few lines, for revising it or talking about it.
+function describeProgram(p: Program) {
+  const days = p.days
+    .map((d) => `- ${WEEKDAYS[d.dayOfWeek]}: ${d.title} (${d.timing}). ${d.purpose}\n  ${d.exercises.map((e) => `${e.group ? `${e.group} ` : ""}${e.name} ${e.sets}x${e.reps || e.target}${e.targetRpe ? ` RPE ${e.targetRpe}` : ""}`).join("; ")}`)
     .join("\n");
+  return `Their current program "${p.name}": ${p.summary}\nRationale: ${(p.rationale ?? []).join(" ")}\nWeeks: ${p.weeks.map((w) => `${w.week}: ${w.focus} (${w.rpeShift})`).join("; ")}\nDays:\n${days}`;
+}
+
+async function reviseProgram(anthropic: Anthropic, ctx: Context, current: Program, feedback: string): Promise<Program> {
   const block = (await askClaude(
     anthropic,
     REVISION_BLOCK_SCHEMA,
-    `${ctx.text}\n\nTheir current program "${current.name}": ${current.summary}\nRationale: ${(current.rationale ?? []).join(" ")}\nWeeks: ${current.weeks.map((w) => `${w.week}: ${w.focus} (${w.rpeShift})`).join("; ")}\nDays:\n${outline}\n\nTheir feedback:\n"""${feedback}"""\n\nRevise the program to address the feedback while keeping what already works and keeping the science sound. If a request would be unsafe or conflicts with their goals, adapt it sensibly and say so. In "changes", list each change you made and why, in plain words. ${BLOCK_TASK} Set "rewrite" to false only for a day that stays on the same weekday with exactly the same exercises; otherwise true.`,
+    `${ctx.text}\n\n${describeProgram(current)}\n\nTheir feedback:\n"""${feedback}"""\n\nRevise the program to address the feedback while keeping what already works and keeping the science sound. If a request would be unsafe or conflicts with their goals, adapt it sensibly and say so. In "changes", list each change you made and why, in plain words. ${BLOCK_TASK} Set "rewrite" to false only for a day that stays on the same weekday with exactly the same exercises; otherwise true.`,
     { label: "revision block" },
   )) as Block;
   const byDay = new Map(current.days.map((d) => [d.dayOfWeek, d]));
@@ -422,6 +437,43 @@ async function reviseProgram(anthropic: Anthropic, ctx: Context, current: Progra
     },
     (d) => (d.rewrite === false ? (byDay.get(d.dayOfWeek)?.exercises ?? null) : null),
   );
+}
+
+const CHAT_TASK = `You are now chatting with them about their program, inside the app. They may ask why something is there, say it feels like too much or too little, or want something changed.
+
+- Reply like their coach talking to them: honest, specific to their program and schedule, plain words, no markdown or emoji, under 120 words. Ask at most one question.
+- Respect what they like (for example, if they like lifting most days, keep them lifting and manage fatigue with lighter, shorter or upper-body days instead of simply cutting days). If you think something is a mistake, say so and why, then let them decide.
+- You can't change the program yourself. Only when the two of you have agreed on a concrete change (they asked for it clearly, or said yes to your suggestion), put in "proposal" a precise instruction for the coach who rewrites the program: what changes, on which days, and why. Otherwise "proposal" is "". When you give a proposal, end your reply by telling them to tap "Rewrite my program" to get the new version to review.
+- Lifting days, class days, class time and session length come from their week settings. If they want to change those, tell them to update "Your week" on the program screen first.
+- Never write or change MMA, boxing or grappling classes. Wellness coaching only: if they describe pain or an injury, don't diagnose it; suggest getting it checked and offer to work around it.
+- Only state numbers you were given; never invent their stats.`;
+
+type ChatMessage = { role: "user" | "coach"; content: string; proposal: string | null; created_at: string };
+
+async function chat(
+  anthropic: Anthropic,
+  supabase: SupabaseClient,
+  ctx: Context,
+  program: Program,
+  message: string,
+): Promise<{ reply: string; proposal: string }> {
+  const [{ data: history }, { data: checkIns }] = await Promise.all([
+    supabase.from("coach_chats").select("role, content, proposal, created_at").order("created_at", { ascending: false }).limit(20),
+    supabase.from("check_ins").select("day, sleep_hours, sleep_quality, feeling").order("day", { ascending: false }).limit(7),
+  ]);
+  const transcript = ((history ?? []) as ChatMessage[])
+    .reverse()
+    .map((m) => `${m.role === "user" ? "Them" : "You"}: ${m.content}${m.proposal ? ` [proposed change: ${m.proposal}]` : ""}`)
+    .join("\n");
+  const checkInText = checkIns?.length
+    ? checkIns.map((c) => `- ${c.day}: slept ${c.sleep_hours} h, sleep ${c.sleep_quality}/5, feeling ${c.feeling}/5`).join("\n")
+    : "- none yet";
+  const prompt = `${ctx.text}\n\nRecent morning check-ins:\n${checkInText}\n\n${describeProgram(program)}\n\n${CHAT_TASK}\n\n${transcript ? `The conversation so far:\n${transcript}\n\n` : ""}Their new message:\n"""${message}"""`;
+  const result = (await askClaude(anthropic, CHAT_SCHEMA, prompt, { label: "chat", effort: "low" })) as {
+    reply: string;
+    proposal: string;
+  };
+  return { reply: result.reply.trim(), proposal: result.proposal.trim() };
 }
 
 // Supabase stops the function at 150 s; give up a little before that so the
@@ -521,7 +573,7 @@ Deno.serve(async (req) => {
     return json({ programId: row.id, cached: false });
   }
 
-  // Both edits start from a program the user owns (RLS makes sure of that).
+  // Everything below starts from a program the user owns (RLS makes sure of that).
   const { data: base } = await supabase
     .from("programs")
     .select("id, plan, status")
@@ -553,6 +605,30 @@ Deno.serve(async (req) => {
 
     EdgeRuntime.waitUntil(generateInto(supabase, row.id, () => reviseProgram(anthropic, ctx, plan, feedback)));
     return json({ programId: row.id, cached: false });
+  }
+
+  // ----- chat: talk about the program; agreed changes come back as a proposal -----
+  if (mode === "chat") {
+    const message = String(body.message ?? "").trim().slice(0, 2000);
+    if (!message) return json({ error: "Type a message first" }, 400);
+    const sentAt = new Date().toISOString();
+    try {
+      const { reply, proposal } = await chat(anthropic, supabase, ctx, plan, message);
+      if (!reply) return json({ error: "The coach returned an empty reply, try again" }, 502);
+      const { data: rows, error } = await supabase
+        .from("coach_chats")
+        .insert([
+          { user_id: userId, role: "user", content: message, created_at: sentAt },
+          { user_id: userId, role: "coach", content: reply, proposal: proposal || null },
+        ])
+        .select("id, role, content, proposal, created_at");
+      if (error) return json({ error: error.message }, 500);
+      return json({ messages: rows });
+    } catch (error) {
+      const { message: friendly, status } = friendlyError(error);
+      console.error(`Chat failed: ${error instanceof Error ? error.message : error}`);
+      return json({ error: friendly }, status);
+    }
   }
 
   // ----- swap: replace one exercise with one that serves the same purpose -----

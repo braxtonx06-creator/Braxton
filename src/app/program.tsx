@@ -9,7 +9,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -42,7 +41,8 @@ import {
 import { loadLatestBaselines, Result } from "@/lib/training";
 
 // The 4-week block: review a new or revised program, see why everything is
-// there, swap exercises, request changes, and open any day of the current week.
+// there, swap exercises, chat with the coach about changes, and open any day
+// of the current week.
 export default function ProgramScreen() {
   const [active, setActive] = useState<Program | null>(null);
   const [pending, setPending] = useState<Program | null>(null);
@@ -52,7 +52,6 @@ export default function ProgramScreen() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [swapping, setSwapping] = useState<string | null>(null); // "day:exerciseId"
-  const [feedback, setFeedback] = useState("");
   const [swapNote, setSwapNote] = useState<string | null>(null);
   // The coach needs the user's week before it can swap or revise anything.
   const [weekSet, setWeekSet] = useState<boolean | null>(null);
@@ -173,13 +172,6 @@ export default function ProgramScreen() {
     run("rewrite", async () => {
       await discardProgram(program.id);
       if (!isRevision) await requestProgram();
-      load();
-    });
-
-  const submitFeedback = () =>
-    run("feedback", async () => {
-      await requestRevision(program.id, feedback.trim());
-      setFeedback("");
       load();
     });
 
@@ -324,27 +316,14 @@ export default function ProgramScreen() {
 
       <WeekCard onChange={(w) => setWeekSet(w.liftDays.length > 0)} />
 
-      {!isRevision && (
+      {!isRevision && program.status === "active" && (
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>REQUEST CHANGES</Text>
+          <Text style={styles.cardTitle}>WANT SOMETHING CHANGED?</Text>
           <Text style={styles.muted}>
-            Tell your coach what to change and why: more supersets, a different split, more conditioning, less time... You'll
-            review the new version before it replaces this one.
+            Talk it through with your coach: too much with class, a different split, more conditioning, shorter
+            sessions... If you agree on a change, you'll review the rewritten program before it replaces this one.
           </Text>
-          <TextInput
-            style={styles.input}
-            value={feedback}
-            onChangeText={setFeedback}
-            placeholder="e.g. I want more power work and shorter sessions on class days"
-            placeholderTextColor={colors.muted}
-            multiline
-          />
-          <Button
-            label="Send to coach"
-            busy={busy === "feedback"}
-            disabled={feedback.trim().length < 5 || weekSet === false}
-            onPress={submitFeedback}
-          />
+          <Button label="Chat with your coach" disabled={weekSet === false} onPress={() => router.push("/chat")} />
         </View>
       )}
     </Screen>
@@ -416,17 +395,6 @@ const styles = StyleSheet.create({
   group: { color: colors.accent, fontWeight: "800" },
   exPrescription: { color: colors.text, fontSize: 13 },
   exPurpose: { color: colors.muted, fontSize: 13, lineHeight: 18 },
-  input: {
-    backgroundColor: colors.bg,
-    color: colors.text,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.line,
-    padding: 12,
-    fontSize: 15,
-    minHeight: 90,
-    textAlignVertical: "top",
-  },
   button: { backgroundColor: colors.accent, borderRadius: radius, paddingVertical: 15, alignItems: "center" },
   buttonText: { color: "#fff", fontSize: 16, fontWeight: "700" },
   secondary: { paddingVertical: 10, alignItems: "center" },

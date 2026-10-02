@@ -93,6 +93,8 @@ export default function WorkoutScreen() {
   const [activeExercise, setActiveExercise] = useState<string | null>(null);
   const [swapping, setSwapping] = useState<string | null>(null);
   const [swapNote, setSwapNote] = useState<string | null>(null);
+  const [openEx, setOpenEx] = useState<string | null>(null); // exercise showing its why and Swap
+  const [showIntro, setShowIntro] = useState(false);
   const started = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { checkIn } = useTodayCheckIn();
@@ -254,7 +256,16 @@ export default function WorkoutScreen() {
                 {completed || notStarted ? `${totalSets} sets` : `${doneSets} of ${totalSets} sets done`}
               </Text>
             </View>
-            {!completed && !!workout.plan.intro && <Text style={styles.intro}>{workout.plan.intro}</Text>}
+            {!completed && !!workout.plan.intro && (
+              <Text
+                style={styles.intro}
+                numberOfLines={showIntro ? undefined : 2}
+                onPress={() => setShowIntro(!showIntro)}
+              >
+                {workout.plan.intro}
+              </Text>
+            )}
+            {!completed && <Text style={styles.hint}>Tap an exercise for why it's there and to swap it.</Text>}
           </View>
 
           {results && <ResultsCard results={results} kind={workout.kind} tint={tint} />}
@@ -288,13 +299,17 @@ export default function WorkoutScreen() {
                       key={ex.id}
                       style={[styles.exercise, n > 0 && styles.exerciseNext, active && styles.exerciseActive]}
                     >
-                      <View style={styles.exHeader}>
+                      <Pressable
+                        style={styles.exHeader}
+                        onPress={() => setOpenEx(openEx === ex.id ? null : ex.id)}
+                        accessibilityLabel={`${ex.name}: details`}
+                      >
                         <View style={styles.exText}>
                           <Text style={styles.exName}>
                             {label ? <Text style={styles.group}>{label} </Text> : null}
                             {ex.name}
                           </Text>
-                          <Text style={styles.exTarget}>
+                          <Text style={styles.exTarget} numberOfLines={openEx === ex.id ? undefined : 1}>
                             {varied
                               ? `${ex.sets.length} sets`
                               : ex.sets.length === 1
@@ -308,10 +323,10 @@ export default function WorkoutScreen() {
                             <Text style={styles.exUnit}> lb</Text>
                           </Text>
                         )}
-                      </View>
-                      {!completed && !!ex.purpose && <Text style={styles.purpose}>{ex.purpose}</Text>}
-                      {!completed && !!notesOnly(ex) && <Text style={styles.instructions}>{notesOnly(ex)}</Text>}
-                      {canSwap(ex) && (
+                      </Pressable>
+                      {openEx === ex.id && !!ex.purpose && <Text style={styles.purpose}>{ex.purpose}</Text>}
+                      {openEx === ex.id && !!notesOnly(ex) && <Text style={styles.instructions}>{notesOnly(ex)}</Text>}
+                      {openEx === ex.id && canSwap(ex) && (
                         <Pressable hitSlop={8} onPress={() => setSwapping(swapping === ex.id ? null : ex.id)}>
                           <Text style={styles.swap}>{swapping === ex.id ? "Cancel" : "Swap"}</Text>
                         </Pressable>
@@ -417,9 +432,11 @@ export default function WorkoutScreen() {
 
           {saveError && <Text style={styles.error}>{saveError}</Text>}
 
-          <Text style={styles.footnote}>
-            RPE = how hard the set was: 10 is nothing left, 9 is one rep left in the tank, 8 is two left.
-          </Text>
+          {workout.plan.exercises.some((ex) => ex.kind === "strength") && (
+            <Text style={styles.footnote}>
+              RPE = how hard the set was: 10 is nothing left, 9 is one rep left in the tank, 8 is two left.
+            </Text>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -537,6 +554,7 @@ const styles = StyleSheet.create({
   meta: { flexDirection: "row", gap: 14 },
   metaText: { color: colors.muted, fontFamily: fonts.medium, fontSize: 13 },
   intro: { color: colors.soft, fontFamily: fonts.regular, fontSize: 14, lineHeight: 20 },
+  hint: { color: colors.faint, fontFamily: fonts.medium, fontSize: 12 },
   note: { color: colors.soft, fontFamily: fonts.medium, fontSize: 14, lineHeight: 20 },
 
   block: { backgroundColor: colors.card, borderRadius: radius, overflow: "hidden" },

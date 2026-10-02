@@ -252,6 +252,16 @@ export function describeExercise(ex: ProgramExercise, rpe: number, weight: numbe
   return `${ex.sets} × ${ex.reps} @ RPE ${fmtRpe(rpe)}${weight ? ` · ~${weight} lb` : ""}`;
 }
 
+// One-line version for lists: "4 × 8 @ RPE 8", "4 × 3", "3 × 10 minutes easy".
+export function shortPrescription(ex: ProgramExercise, rpe: number) {
+  if (ex.kind === "conditioning") return `${ex.sets} × ${ex.target.split(/[,;.(]/)[0].trim()}`;
+  if (ex.kind === "power") return `${ex.sets} × ${ex.reps}`;
+  return `${ex.sets} × ${ex.reps} @ RPE ${fmtRpe(rpe)}`;
+}
+
+// "6:00 AM, ~70 min" → "~70 min"
+export const sessionLength = (timing: string) => timing.match(/~?\d+\s*min/)?.[0] ?? "";
+
 export function buildSessionPlan(
   plan: ProgramPlan,
   day: ProgramDay,
@@ -272,7 +282,14 @@ export function buildSessionPlan(
 
   const exercises: PlanExercise[] = day.exercises.map((ex) => {
     const instructions = [ex.target, ex.notes].filter(Boolean).join(". ");
-    const shared = { id: ex.id, name: ex.name, group: ex.group, purpose: ex.purpose, instructions, restSeconds: ex.restSeconds };
+    const shared = {
+      id: ex.id,
+      name: ex.name,
+      group: ex.group,
+      purpose: ex.purpose,
+      instructions,
+      restSeconds: ex.restSeconds,
+    };
 
     // Jumps, throws, sprints and conditioning: record a result per set or round.
     if (ex.kind === "conditioning" || ex.kind === "power") {

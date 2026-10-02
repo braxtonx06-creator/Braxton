@@ -1,5 +1,5 @@
-import { router, useFocusEffect } from "expo-router";
-import { useCallback, useRef, useState } from "react";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -20,14 +20,18 @@ import { ChatMessage, clearChat, loadChat, sendChat } from "@/lib/chat";
 import { loadProgramState, requestRevision } from "@/lib/program";
 
 const STARTERS = [
-  "Is this too much with my MMA classes?",
-  "Why is this program set up the way it is?",
-  "I like lifting almost every day. Can we keep that?",
+  "What should I eat before MMA tonight?",
+  "Is my program too much with my MMA classes?",
+  "I slept badly. What should I change today?",
 ];
 
-// Talk your program through with the coach. When you agree on a change, the
-// coach offers to rewrite the program; you still review it before it's used.
+// Chat with the coach about training, food, sleep and recovery. When you agree
+// on a program change, the coach offers to rewrite the program; you still
+// review it before it's used.
 export default function ChatScreen() {
+  // A message typed on the home screen arrives here and is sent once.
+  const { message: fromHome } = useLocalSearchParams<{ message?: string }>();
+  const sentFromHome = useRef(false);
   const [programId, setProgramId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -48,31 +52,19 @@ export default function ChatScreen() {
       .catch((e: Error) => setError(e.message));
   }, []);
 
-  useFocusEffect(load);
-
-  if (error) return <ErrorState message={error} onRetry={load} />;
-  if (!loaded) {
-    return (
-      <View style={[styles.safe, styles.center]}>
-        <ActivityIndicator color={colors.accent} />
-      </View>
-    );
-  }
-
-  const back = () => (router.canGoBack() ? router.back() : router.replace("/"));
   const alert = (title: string, message: string) =>
     Platform.OS === "web" ? window.alert(message) : Alert.alert(title, message);
 
   const send = async (raw: string) => {
     const message = raw.trim();
-    if (!message || !programId || sending) return;
+    if (!message || sending) return;
     // Show their message right away; swap in the saved copy when the coach answers.
     const temp: ChatMessage = { id: "pending", role: "user", content: message, proposal: null, created_at: "" };
     setMessages((m) => [...m, temp]);
     setText("");
     setSending(true);
     try {
-      const saved = await sendChat(programId, message);
+      const saved = await sendChat(message);
       setMessages((m) => [...m.filter((x) => x !== temp), ...saved]);
     } catch (e) {
       setMessages((m) => m.filter((x) => x !== temp));
@@ -82,6 +74,26 @@ export default function ChatScreen() {
       setSending(false);
     }
   };
+
+  useFocusEffect(load);
+
+  useEffect(() => {
+    if (!loaded || !fromHome || sentFromHome.current) return;
+    sentFromHome.current = true;
+    send(fromHome);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded, fromHome]);
+
+  const back = () => (router.canGoBack() ? router.back() : router.replace("/"));
+
+  if (error) return <ErrorState message={error} onRetry={load} />;
+  if (!loaded) {
+    return (
+      <View style={[styles.safe, styles.center]}>
+        <ActivityIndicator color={colors.accent} />
+      </View>
+    );
+  }
 
   const rewrite = async (proposal: string) => {
     if (!programId) return;
@@ -131,17 +143,13 @@ export default function ChatScreen() {
           onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: true })}
         >
           <Text style={styles.kicker}>COACH</Text>
-          <Text style={styles.title}>Talk about your program</Text>
+          <Text style={styles.title}>Your coach</Text>
           <Text style={styles.body}>
-            Ask why something is there, or tell your coach what feels off. If you agree on a change, you can have the
-            program rewritten, and you'll review it before it's used.
+            Ask about training, food, sleep or recovery. If you agree on a program change, you can have the program
+            rewritten, and you'll review it before it's used.
           </Text>
 
-          {!programId && (
-            <Text style={styles.warn}>You need an active program first. Build one from the Training card.</Text>
-          )}
-
-          {programId && messages.length === 0 && (
+          {messages.length === 0 && !sending && (
             <View style={styles.starters}>
               {STARTERS.map((s) => (
                 <Pressable key={s} style={styles.starter} onPress={() => send(s)} disabled={sending}>
@@ -158,7 +166,7 @@ export default function ChatScreen() {
                 <View style={styles.proposal}>
                   <Text style={styles.proposalLabel}>PROPOSED CHANGE</Text>
                   <Text style={styles.proposalText}>{m.proposal}</Text>
-                  {m === lastCoach && (
+                  {m === lastCoach && programId && (
                     <Pressable
                       style={[styles.button, rewriting && styles.disabled]}
                       disabled={rewriting || sending}
@@ -184,26 +192,24 @@ export default function ChatScreen() {
           )}
         </ScrollView>
 
-        {programId && (
-          <View style={styles.composer}>
-            <TextInput
-              style={styles.input}
-              value={text}
-              onChangeText={setText}
-              placeholder="Message your coach"
-              placeholderTextColor={colors.muted}
-              multiline
-              maxLength={2000}
-            />
-            <Pressable
-              style={[styles.send, (!text.trim() || sending) && styles.disabled]}
-              disabled={!text.trim() || sending}
-              onPress={() => send(text)}
-            >
-              <Text style={styles.buttonText}>Send</Text>
-            </Pressable>
-          </View>
-        )}
+        <View style={styles.composer}>
+          <TextInput
+            style={styles.input}
+            value={text}
+            onChangeText={setText}
+            placeholder="Message your coach"
+            placeholderTextColor={colors.muted}
+            multiline
+            maxLength={2000}
+          />
+          <Pressable
+            style={[styles.send, (!text.trim() || sending) && styles.disabled]}
+            disabled={!text.trim() || sending}
+            onPress={() => send(text)}
+          >
+            <Text style={styles.buttonText}>Send</Text>
+          </Pressable>
+        </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -219,7 +225,6 @@ const styles = StyleSheet.create({
   title: { color: colors.text, fontSize: 28, fontWeight: "800" },
   body: { color: colors.muted, fontSize: 15, lineHeight: 21 },
   muted: { color: colors.muted, fontSize: 14 },
-  warn: { color: colors.accent, fontSize: 14, lineHeight: 20, fontWeight: "600" },
   row: { flexDirection: "row", alignItems: "center", gap: 8 },
   starters: { gap: 8, marginTop: 6 },
   starter: { borderWidth: 1, borderColor: colors.line, borderRadius: 12, padding: 12 },

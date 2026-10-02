@@ -4,6 +4,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { CheckInCard } from "@/components/CheckInCard";
+import { CoachChatCard } from "@/components/CoachChatCard";
 import { ErrorState } from "@/components/ErrorState";
 import { TrainingCard } from "@/components/TrainingCard";
 import { colors, radius } from "@/components/theme";
@@ -89,6 +90,8 @@ export default function HomeScreen() {
             </View>
           )}
         </View>
+
+        <CoachChatCard />
 
         {/* After checking in, the summary sits under the coach (tap Edit to change it). */}
         {checkInDone && <CheckInCard checkIn={checkIns.checkIn} onSaved={checkIns.setCheckIn} />}

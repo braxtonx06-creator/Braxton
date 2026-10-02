@@ -1,9 +1,11 @@
-// Chatting with the coach about the program. The coach can't change the
-// program itself: when you agree on a change, its reply carries a `proposal`,
-// and "Rewrite my program" sends that to the coach as a revision to review.
+// Chatting with the coach about anything it covers: training, food, sleep,
+// recovery, body weight. The coach can't change the program itself: when you
+// agree on a change, its reply carries a `proposal`, and "Rewrite my program"
+// sends that to the coach as a revision to review.
 
 import { FunctionsHttpError } from "@supabase/supabase-js";
 
+import { localDate } from "@/lib/dates";
 import { supabase } from "@/lib/supabase";
 
 export type ChatMessage = {
@@ -28,9 +30,9 @@ export async function loadChat(limit = 50): Promise<ChatMessage[]> {
 }
 
 // Sends a message and returns it plus the coach's reply, as saved.
-export async function sendChat(programId: string, message: string): Promise<ChatMessage[]> {
+export async function sendChat(message: string): Promise<ChatMessage[]> {
   const { data, error } = await supabase.functions.invoke<{ messages: ChatMessage[] }>("program", {
-    body: { mode: "chat", programId, message },
+    body: { mode: "chat", message, date: localDate() },
   });
   if (error) {
     if (error instanceof FunctionsHttpError) {

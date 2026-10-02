@@ -184,6 +184,10 @@ Deno.serve(async (req) => {
     if (error instanceof Anthropic.RateLimitError) {
       return json({ error: "Coach is busy, try again in a minute" }, 503);
     }
+    if (error instanceof Anthropic.APIError && /credit balance/i.test(error.message)) {
+      console.error("Anthropic account is out of credit");
+      return json({ error: "Your coach is out of Anthropic API credit. Add credit in the Anthropic Console (Plans & Billing)." }, 502);
+    }
     if (error instanceof Anthropic.APIError) {
       console.error(`Anthropic API error ${error.status}: ${error.message}`);
       return json({ error: "Coach is unavailable right now" }, 502);

@@ -196,9 +196,14 @@ function ProgramCard({ summary, checkIn }: { summary: TrainingSummary; checkIn: 
     <View style={styles.card}>
       <View style={styles.row}>
         <Text style={styles.title}>WEEK {week} · TODAY</Text>
-        <Pressable hitSlop={8} onPress={() => router.push("/program")}>
-          <Text style={styles.link}>Full program</Text>
-        </Pressable>
+        <View style={styles.links}>
+          <Pressable hitSlop={8} onPress={() => router.push("/chat")}>
+            <Text style={styles.link}>Ask coach</Text>
+          </Pressable>
+          <Pressable hitSlop={8} onPress={() => router.push("/program")}>
+            <Text style={styles.link}>Full program</Text>
+          </Pressable>
+        </View>
       </View>
       {revision && (
         <Pressable onPress={() => router.push("/program")}>
@@ -308,6 +313,7 @@ function Button({ label, onPress }: { label: string; onPress: () => void }) {
 }
 
 const styles = StyleSheet.create({
+  links: { flexDirection: "row", gap: 16 },
   card: { backgroundColor: colors.card, borderRadius: radius, padding: 16, gap: 10 },
   row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   title: { color: colors.muted, fontSize: 13, fontWeight: "700", letterSpacing: 1 },

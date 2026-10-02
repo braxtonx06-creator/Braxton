@@ -192,6 +192,11 @@ export default function ProgramScreen() {
       <Pressable hitSlop={8} onPress={() => router.push("/goals")}>
         <Text style={styles.link}>Edit my goals ›</Text>
       </Pressable>
+      {program.status === "active" && (
+        <Pressable hitSlop={8} onPress={() => router.push("/chat")}>
+          <Text style={styles.link}>Chat with your coach about this program ›</Text>
+        </Pressable>
+      )}
       {swapNote && <Text style={styles.note}>{swapNote}</Text>}
       {weekSet === false && (
         <Text style={styles.warn}>Set your week below first: your coach needs your lifting and MMA days to swap or change anything.</Text>

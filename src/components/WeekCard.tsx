@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
-import { colors, disabledFill, disabledText, radius } from "@/components/theme";
+import { colors, disabledFill, disabledText, fonts, radius } from "@/components/theme";
 import { WEEKDAYS, WEEKDAYS_SHORT } from "@/lib/program";
 import { loadTrainingSummary, saveWeek, Week } from "@/lib/training";
 
@@ -36,7 +36,7 @@ export function WeekCard({ onChange }: { onChange?: (week: Week) => void }) {
   if (!week) {
     return (
       <View style={styles.card}>
-        {error ? <Text style={styles.error}>{error}</Text> : <ActivityIndicator color={colors.accent} />}
+        {error ? <Text style={styles.error}>{error}</Text> : <ActivityIndicator color={colors.muted} />}
       </View>
     );
   }
@@ -52,7 +52,9 @@ export function WeekCard({ onChange }: { onChange?: (week: Week) => void }) {
             <Text style={styles.link}>Edit</Text>
           </Pressable>
         </View>
-        <Text style={styles.line}>Lifting: {names(week.liftDays)} · up to {week.sessionMinutes} min</Text>
+        <Text style={styles.line}>
+          Lifting: {names(week.liftDays)} · up to {week.sessionMinutes} min
+        </Text>
         <Text style={styles.line}>
           MMA / classes: {names(week.classDays)}
           {week.classTime ? ` (${week.classTime})` : ""}
@@ -124,7 +126,9 @@ export function WeekCard({ onChange }: { onChange?: (week: Week) => void }) {
         {saving ? (
           <ActivityIndicator color={colors.onAccent} />
         ) : (
-          <Text style={[styles.buttonText, !week.liftDays.length && disabledText]}>{week.liftDays.length ? "Save my week" : "Pick at least one lifting day"}</Text>
+          <Text style={[styles.buttonText, !week.liftDays.length && disabledText]}>
+            {week.liftDays.length ? "Save my week" : "Pick at least one lifting day"}
+          </Text>
         )}
       </Pressable>
     </View>
@@ -153,19 +157,20 @@ function Days({ selected, onToggle, label }: { selected: number[]; onToggle: (d:
 
 const styles = StyleSheet.create({
   card: { backgroundColor: colors.card, borderRadius: radius, padding: 14, gap: 8 },
-  cardAccent: { borderWidth: 1, borderColor: colors.accent },
+  cardAccent: { borderWidth: 1, borderColor: colors.soft },
   row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  title: { color: colors.muted, fontSize: 12, fontWeight: "800", letterSpacing: 1 },
-  link: { color: colors.accent, fontSize: 14, fontWeight: "600" },
-  line: { color: colors.text, fontSize: 14 },
-  muted: { color: colors.muted, fontSize: 13 },
-  question: { color: colors.text, fontSize: 15, fontWeight: "700", marginTop: 4 },
+  title: { color: colors.muted, fontFamily: fonts.heavy, fontSize: 12, letterSpacing: 1 },
+  link: { color: colors.soft, fontFamily: fonts.bold, fontSize: 14 },
+  line: { color: colors.text, fontFamily: fonts.regular, fontSize: 14, lineHeight: 20 },
+  muted: { color: colors.muted, fontFamily: fonts.regular, fontSize: 13 },
+  question: { color: colors.text, fontFamily: fonts.bold, fontSize: 15, marginTop: 4 },
   days: { flexDirection: "row", gap: 5 },
   day: { flex: 1, paddingVertical: 9, borderRadius: 10, backgroundColor: colors.bg, alignItems: "center" },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: colors.bg },
-  chipText: { color: colors.text, fontWeight: "600", fontSize: 13 },
-  on: { backgroundColor: colors.accent },
+  chipText: { color: colors.text, fontFamily: fonts.semibold, fontSize: 13 },
+  // Selected days are white: color is saved for today's readiness.
+  on: { backgroundColor: colors.text },
   onText: { color: colors.onAccent },
   input: {
     backgroundColor: colors.bg,
@@ -176,7 +181,7 @@ const styles = StyleSheet.create({
     padding: 10,
     fontSize: 14,
   },
-  button: { backgroundColor: colors.accent, borderRadius: 12, paddingVertical: 13, alignItems: "center", marginTop: 4 },
-  buttonText: { color: colors.onAccent, fontSize: 15, fontWeight: "700" },
+  button: { backgroundColor: colors.text, borderRadius: 12, paddingVertical: 13, alignItems: "center", marginTop: 4 },
+  buttonText: { color: colors.onAccent, fontFamily: fonts.heavy, fontSize: 15 },
   error: { color: "#F87171", fontSize: 13 },
 });

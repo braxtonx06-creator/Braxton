@@ -122,7 +122,7 @@ export function WeekCard({ onChange }: { onChange?: (week: Week) => void }) {
         onPress={save}
       >
         {saving ? (
-          <ActivityIndicator color="#fff" />
+          <ActivityIndicator color={colors.onAccent} />
         ) : (
           <Text style={styles.buttonText}>{week.liftDays.length ? "Save my week" : "Pick at least one lifting day"}</Text>
         )}
@@ -166,7 +166,7 @@ const styles = StyleSheet.create({
   chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: colors.bg },
   chipText: { color: colors.text, fontWeight: "600", fontSize: 13 },
   on: { backgroundColor: colors.accent },
-  onText: { color: "#fff" },
+  onText: { color: colors.onAccent },
   input: {
     backgroundColor: colors.bg,
     color: colors.text,
@@ -177,7 +177,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   button: { backgroundColor: colors.accent, borderRadius: 12, paddingVertical: 13, alignItems: "center", marginTop: 4 },
-  buttonText: { color: "#fff", fontSize: 15, fontWeight: "700" },
+  buttonText: { color: colors.onAccent, fontSize: 15, fontWeight: "700" },
   disabled: { opacity: 0.5 },
   error: { color: "#F87171", fontSize: 13 },
 });

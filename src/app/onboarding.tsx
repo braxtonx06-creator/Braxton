@@ -142,7 +142,7 @@ const styles = StyleSheet.create({
   buttons: { flexDirection: "row", gap: 12, padding: 20 },
   button: { flex: 1, borderRadius: radius, paddingVertical: 16, alignItems: "center" },
   primary: { backgroundColor: colors.accent },
-  primaryText: { color: "#fff", fontSize: 17, fontWeight: "700" },
+  primaryText: { color: colors.onAccent, fontSize: 17, fontWeight: "700" },
   secondary: { backgroundColor: colors.card },
   secondaryText: { color: colors.text, fontSize: 17, fontWeight: "600" },
   disabled: { opacity: 0.4 },

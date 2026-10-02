@@ -164,7 +164,7 @@ export default function WorkoutScreen() {
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}>
-            <Text style={styles.back}>‹ Today</Text>
+            <Text style={styles.back}>‹ Back</Text>
           </Pressable>
           <Text style={styles.kicker}>
             {workout.kind === "test" ? "TESTING WORKOUT" : `WEEK ${workout.program_week ?? ""} WORKOUT`}
@@ -290,7 +290,7 @@ export default function WorkoutScreen() {
           {!completed && (
             <Pressable style={[styles.finish, finishing && styles.disabled]} disabled={finishing} onPress={finish}>
               {finishing ? (
-                <ActivityIndicator color="#fff" />
+                <ActivityIndicator color={colors.onAccent} />
               ) : (
                 <Text style={styles.finishText}>{workout.kind === "test" ? "Finish test" : "Finish workout"}</Text>
               )}
@@ -427,7 +427,7 @@ const styles = StyleSheet.create({
   doneText: { color: colors.muted, fontSize: 20, fontWeight: "800" },
   doneTextOn: { color: "#0E0F12" },
   finish: { backgroundColor: colors.accent, borderRadius: radius, paddingVertical: 16, alignItems: "center", marginTop: 8 },
-  finishText: { color: "#fff", fontSize: 17, fontWeight: "700" },
+  finishText: { color: colors.onAccent, fontSize: 17, fontWeight: "700" },
   disabled: { opacity: 0.4 },
   error: { color: "#F87171", fontSize: 14 },
   resultsCard: { borderWidth: 1, borderColor: colors.accent },

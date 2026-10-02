@@ -134,7 +134,7 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 20, gap: 14, paddingBottom: 48 },
+  content: { padding: 20, gap: 14, paddingBottom: 120 },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   date: { color: colors.muted, fontSize: 14 },
   journalLink: { color: colors.accent, fontSize: 15, fontWeight: "600" },

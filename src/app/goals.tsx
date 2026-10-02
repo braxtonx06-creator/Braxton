@@ -59,7 +59,7 @@ export default function GoalsScreen() {
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <ScrollView contentContainerStyle={styles.content}>
         <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}>
-          <Text style={styles.back}>‹ Today</Text>
+          <Text style={styles.back}>‹ Back</Text>
         </Pressable>
         <Text style={styles.title}>What are you training for?</Text>
         <Text style={styles.muted}>Pick everything that matters to you. Your testing workout and program are built from this.</Text>
@@ -134,7 +134,7 @@ export default function GoalsScreen() {
           disabled={!primary || !liftDays.length || saving}
           onPress={save}
         >
-          {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Save goals</Text>}
+          {saving ? <ActivityIndicator color={colors.onAccent} /> : <Text style={styles.buttonText}>Save goals</Text>}
         </Pressable>
       </ScrollView>
     </SafeAreaView>
@@ -202,14 +202,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   checkOn: { backgroundColor: colors.accent, borderColor: colors.accent },
-  checkMark: { color: "#fff", fontWeight: "800" },
+  checkMark: { color: colors.onAccent, fontWeight: "800" },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: colors.card },
   chipOn: { backgroundColor: colors.accent },
   chipText: { color: colors.text, fontWeight: "600" },
-  chipTextOn: { color: "#fff" },
+  chipTextOn: { color: colors.onAccent },
   button: { backgroundColor: colors.accent, borderRadius: radius, paddingVertical: 16, alignItems: "center", marginTop: 8 },
-  buttonText: { color: "#fff", fontSize: 17, fontWeight: "700" },
+  buttonText: { color: colors.onAccent, fontSize: 17, fontWeight: "700" },
   disabled: { opacity: 0.4 },
   error: { color: "#F87171", fontSize: 14 },
 });

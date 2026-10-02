@@ -77,7 +77,7 @@ export function CheckInCard({
       {error && <Text style={styles.error}>{error}</Text>}
 
       <Pressable style={[styles.button, !canSave && styles.disabled]} disabled={!canSave} onPress={save}>
-        {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Save check-in</Text>}
+        {saving ? <ActivityIndicator color={colors.onAccent} /> : <Text style={styles.buttonText}>Save check-in</Text>}
       </Pressable>
       {onSkip && !checkIn && (
         <Pressable onPress={onSkip} hitSlop={8}>
@@ -153,7 +153,7 @@ const styles = StyleSheet.create({
   scaleItemOn: { backgroundColor: colors.accent },
   scaleNumber: { color: colors.text, fontSize: 17, fontWeight: "700" },
   scaleLabel: { color: colors.muted, fontSize: 10 },
-  scaleTextOn: { color: "#fff" },
+  scaleTextOn: { color: colors.onAccent },
   button: {
     backgroundColor: colors.accent,
     borderRadius: radius,
@@ -161,7 +161,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 6,
   },
-  buttonText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  buttonText: { color: colors.onAccent, fontSize: 16, fontWeight: "700" },
   disabled: { opacity: 0.4 },
   skip: { color: colors.muted, fontSize: 14, textAlign: "center" },
   error: { color: "#F87171", fontSize: 14 },

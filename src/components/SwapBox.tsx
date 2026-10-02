@@ -57,7 +57,7 @@ export function SwapBox({
       <Pressable style={[styles.button, (busy || !reason.trim()) && styles.disabled]} disabled={busy || !reason.trim()} onPress={swap}>
         {busy ? (
           <View style={styles.row}>
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color={colors.onAccent} />
             <Text style={styles.buttonText}>Finding a replacement…</Text>
           </View>
         ) : (
@@ -75,7 +75,7 @@ const styles = StyleSheet.create({
   chip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: colors.card },
   chipOn: { backgroundColor: colors.accent },
   chipText: { color: colors.text, fontSize: 13 },
-  chipTextOn: { color: "#fff", fontWeight: "700" },
+  chipTextOn: { color: colors.onAccent, fontWeight: "700" },
   input: {
     backgroundColor: colors.card,
     color: colors.text,
@@ -86,7 +86,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   button: { backgroundColor: colors.accent, borderRadius: 10, paddingVertical: 12, alignItems: "center" },
-  buttonText: { color: "#fff", fontSize: 15, fontWeight: "700" },
+  buttonText: { color: colors.onAccent, fontSize: 15, fontWeight: "700" },
   row: { flexDirection: "row", alignItems: "center", gap: 8 },
   disabled: { opacity: 0.5 },
   error: { color: "#F87171", fontSize: 13 },

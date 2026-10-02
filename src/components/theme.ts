@@ -1,12 +1,39 @@
-export const colors = {
-  bg: "#0E0F12",
-  card: "#181A1F",
-  line: "#262930",
-  text: "#F2F3F5",
-  muted: "#8B8F99",
-  accent: "#FF6B35",
-  good: "#4ADE80",
-  coachTag: "#3B82F6",
+// The look: a neutral charcoal base where the only color is today's readiness
+// (volt green = push, orange = steady, red = recover). Everything else is
+// white and grey, so the color itself tells you the verdict.
+
+export const readinessColors = {
+  push: "#B8F34A",
+  steady: "#FF8A1F",
+  recover: "#FF4A4A",
 };
 
-export const radius = 16;
+export const colors = {
+  bg: "#17191E",
+  card: "#22252C",
+  raised: "#2B2F37",
+  line: "#363A43",
+  tabBar: "#1C1E23",
+  text: "#F2F3F5",
+  soft: "#C9CCD3",
+  muted: "#9096A3",
+  faint: "#6B7180",
+  // Buttons, highlights and progress: the "push" color until a screen knows today's readiness.
+  accent: readinessColors.push,
+  onAccent: "#17191E", // text on an accent fill (white on volt is unreadable)
+  good: readinessColors.push,
+  danger: "#FF7A7A",
+  coachTag: "#F2F3F5",
+};
+
+export const radius = 20;
+
+// Archivo, loaded in the root layout. Heavier weights are separate font files.
+export const fonts = {
+  regular: "Archivo_400Regular",
+  medium: "Archivo_500Medium",
+  semibold: "Archivo_600SemiBold",
+  bold: "Archivo_700Bold",
+  heavy: "Archivo_800ExtraBold",
+  black: "Archivo_900Black",
+};

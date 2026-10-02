@@ -100,7 +100,7 @@ export default function ChatScreen() {
     setRewriting(true);
     try {
       await requestRevision(programId, proposal);
-      router.replace("/program");
+      router.replace("/training");
     } catch (e) {
       alert("Couldn't start the rewrite", (e as Error).message);
       setRewriting(false);
@@ -173,7 +173,7 @@ export default function ChatScreen() {
                       onPress={() => rewrite(m.proposal!)}
                     >
                       {rewriting ? (
-                        <ActivityIndicator color="#fff" />
+                        <ActivityIndicator color={colors.onAccent} />
                       ) : (
                         <Text style={styles.buttonText}>Rewrite my program</Text>
                       )}
@@ -237,7 +237,7 @@ const styles = StyleSheet.create({
   proposalLabel: { color: colors.accent, fontSize: 11, fontWeight: "800", letterSpacing: 1 },
   proposalText: { color: colors.text, fontSize: 14, lineHeight: 20 },
   button: { backgroundColor: colors.accent, borderRadius: 12, paddingVertical: 12, alignItems: "center" },
-  buttonText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  buttonText: { color: colors.onAccent, fontSize: 16, fontWeight: "700" },
   disabled: { opacity: 0.5 },
   composer: {
     flexDirection: "row",

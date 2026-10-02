@@ -63,9 +63,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
-  label: { color: "#fff", fontSize: 11, fontWeight: "800", letterSpacing: 1, opacity: 0.8 },
-  time: { color: "#fff", fontSize: 30, fontWeight: "800", fontVariant: ["tabular-nums"] },
+  label: { color: colors.onAccent, fontSize: 11, fontWeight: "800", letterSpacing: 1, opacity: 0.8 },
+  time: { color: colors.onAccent, fontSize: 30, fontWeight: "800", fontVariant: ["tabular-nums"] },
   buttons: { flexDirection: "row", gap: 8 },
   button: { backgroundColor: "rgba(0,0,0,0.25)", borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10 },
-  buttonText: { color: "#fff", fontSize: 15, fontWeight: "700" },
+  buttonText: { color: colors.onAccent, fontSize: 15, fontWeight: "700" },
 });

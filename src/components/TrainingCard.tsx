@@ -107,7 +107,7 @@ function ProgramCard({ summary, checkIn }: { summary: TrainingSummary; checkIn: 
   const build = () =>
     act(async () => {
       await requestProgram();
-      router.push("/program");
+      router.push("/training");
     });
 
   // The coach plans around the user's real week, so it needs it before writing a program.
@@ -148,7 +148,7 @@ function ProgramCard({ summary, checkIn }: { summary: TrainingSummary; checkIn: 
         {busy ? (
           <ActivityIndicator color={colors.accent} />
         ) : pending ? (
-          <Button label={pending.status === "draft" ? "Review program" : "Open"} onPress={() => router.push("/program")} />
+          <Button label={pending.status === "draft" ? "Review program" : "Open"} onPress={() => router.push("/training")} />
         ) : (
           <Button label="Build my program" onPress={build} />
         )}
@@ -200,13 +200,13 @@ function ProgramCard({ summary, checkIn }: { summary: TrainingSummary; checkIn: 
           <Pressable hitSlop={8} onPress={() => router.push("/chat")}>
             <Text style={styles.link}>Ask coach</Text>
           </Pressable>
-          <Pressable hitSlop={8} onPress={() => router.push("/program")}>
+          <Pressable hitSlop={8} onPress={() => router.push("/training")}>
             <Text style={styles.link}>Full program</Text>
           </Pressable>
         </View>
       </View>
       {revision && (
-        <Pressable onPress={() => router.push("/program")}>
+        <Pressable onPress={() => router.push("/training")}>
           <Text style={styles.focus}>{revision} ›</Text>
         </Pressable>
       )}
@@ -323,7 +323,7 @@ const styles = StyleSheet.create({
   body: { color: colors.muted, fontSize: 15, lineHeight: 21, flexShrink: 1 },
   building: { flexDirection: "row", alignItems: "center", gap: 10 },
   button: { backgroundColor: colors.accent, borderRadius: radius, paddingVertical: 14, alignItems: "center" },
-  buttonText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  buttonText: { color: colors.onAccent, fontSize: 16, fontWeight: "700" },
   error: { color: "#F87171", fontSize: 14 },
   retake: { color: colors.muted, fontSize: 14, fontWeight: "600", textAlign: "center" },
   exerciseLine: { color: colors.text, fontSize: 15, lineHeight: 21 },

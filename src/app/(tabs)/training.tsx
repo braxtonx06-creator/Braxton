@@ -105,12 +105,10 @@ export default function ProgramScreen() {
     }
   };
 
-  const back = () => (router.canGoBack() ? router.back() : router.replace("/"));
-
   // ----- Being written -----
   if (pending?.status === "generating") {
     return (
-      <Screen onBack={back}>
+      <Screen>
         <Text style={styles.kicker}>{pending.revision_of ? "REVISING" : "NEW PROGRAM"}</Text>
         <Text style={styles.title}>{pending.revision_of ? "Revising your program" : "Writing your program"}</Text>
         {pending.request && <Text style={styles.quote}>"{pending.request}"</Text>}
@@ -135,7 +133,7 @@ export default function ProgramScreen() {
         load();
       });
     return (
-      <Screen onBack={back}>
+      <Screen>
         <Text style={styles.kicker}>PROGRAM</Text>
         <Text style={styles.title}>That didn't work</Text>
         <Text style={styles.body}>{pending.error ?? "The coach couldn't write the program."}</Text>
@@ -164,8 +162,7 @@ export default function ProgramScreen() {
   const approve = () =>
     run("approve", async () => {
       await approveProgram(program);
-      if (isRevision) load();
-      else back();
+      load();
     });
 
   const rewrite = () =>
@@ -183,7 +180,7 @@ export default function ProgramScreen() {
     });
 
   return (
-    <Screen onBack={back}>
+    <Screen>
       <Text style={styles.kicker}>
         {isRevision ? "REVISED PROGRAM · REVIEW" : isDraft ? "NEW PROGRAM · REVIEW" : `WEEK ${week} OF 4`}
       </Text>
@@ -307,7 +304,7 @@ export default function ProgramScreen() {
                 onPress={() => openDay(day)}
               >
                 {busy === `day-${day.dayOfWeek}` ? (
-                  <ActivityIndicator color="#fff" />
+                  <ActivityIndicator color={colors.onAccent} />
                 ) : (
                   <Text style={styles.buttonText}>
                     {workout?.status === "completed" ? "View" : workout?.status === "in_progress" ? "Continue" : "Start"}
@@ -335,14 +332,11 @@ export default function ProgramScreen() {
   );
 }
 
-function Screen({ onBack, children }: { onBack: () => void; children: React.ReactNode }) {
+function Screen({ children }: { children: React.ReactNode }) {
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <Pressable onPress={onBack}>
-            <Text style={styles.back}>‹ Today</Text>
-          </Pressable>
           {children}
         </ScrollView>
       </KeyboardAvoidingView>
@@ -363,7 +357,7 @@ function Button({
 }) {
   return (
     <Pressable style={[styles.button, (busy || disabled) && styles.disabled]} disabled={busy || disabled} onPress={onPress}>
-      {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>{label}</Text>}
+      {busy ? <ActivityIndicator color={colors.onAccent} /> : <Text style={styles.buttonText}>{label}</Text>}
     </Pressable>
   );
 }
@@ -371,8 +365,7 @@ function Button({
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   center: { alignItems: "center", justifyContent: "center" },
-  content: { padding: 20, gap: 12, paddingBottom: 48 },
-  back: { color: colors.accent, fontSize: 16, fontWeight: "600" },
+  content: { padding: 20, gap: 12, paddingBottom: 120 },
   kicker: { color: colors.accent, fontSize: 12, fontWeight: "800", letterSpacing: 1 },
   title: { color: colors.text, fontSize: 28, fontWeight: "800" },
   body: { color: colors.muted, fontSize: 15, lineHeight: 21, flexShrink: 1 },
@@ -401,7 +394,7 @@ const styles = StyleSheet.create({
   exPrescription: { color: colors.text, fontSize: 13 },
   exPurpose: { color: colors.muted, fontSize: 13, lineHeight: 18 },
   button: { backgroundColor: colors.accent, borderRadius: radius, paddingVertical: 15, alignItems: "center" },
-  buttonText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  buttonText: { color: colors.onAccent, fontSize: 16, fontWeight: "700" },
   secondary: { paddingVertical: 10, alignItems: "center" },
   secondaryText: { color: colors.muted, fontSize: 15, fontWeight: "600" },
   disabled: { opacity: 0.5 },

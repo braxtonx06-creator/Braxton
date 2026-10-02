@@ -80,7 +80,7 @@ export default function SignInScreen() {
 
         <Pressable style={[styles.button, !canSubmit && styles.disabled]} disabled={!canSubmit} onPress={submit}>
           {busy ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color={colors.onAccent} />
           ) : (
             <Text style={styles.buttonText}>{mode === "signIn" ? "Sign in" : "Create account"}</Text>
           )}
@@ -116,7 +116,7 @@ const styles = StyleSheet.create({
     fontSize: 17,
   },
   button: { backgroundColor: colors.accent, borderRadius: radius, paddingVertical: 16, alignItems: "center" },
-  buttonText: { color: "#fff", fontSize: 17, fontWeight: "700" },
+  buttonText: { color: colors.onAccent, fontSize: 17, fontWeight: "700" },
   disabled: { opacity: 0.4 },
   switch: { color: colors.accent, fontSize: 15, fontWeight: "600", textAlign: "center", marginTop: 4 },
   error: { color: "#F87171", fontSize: 14 },

@@ -82,6 +82,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   send: { backgroundColor: colors.accent, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 11 },
-  sendText: { color: "#fff", fontSize: 15, fontWeight: "700" },
+  sendText: { color: colors.onAccent, fontSize: 15, fontWeight: "700" },
   disabled: { opacity: 0.5 },
 });

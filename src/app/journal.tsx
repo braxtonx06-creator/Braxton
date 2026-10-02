@@ -35,7 +35,7 @@ export default function JournalScreen() {
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <ScrollView contentContainerStyle={styles.content}>
         <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}>
-          <Text style={styles.back}>‹ Today</Text>
+          <Text style={styles.back}>‹ Back</Text>
         </Pressable>
         <Text style={styles.title}>Your journal</Text>
         <Text style={styles.muted}>What your coach knows about you so far.</Text>

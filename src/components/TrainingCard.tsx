@@ -2,14 +2,23 @@ import { router } from "expo-router";
 import { useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 
-import { colors, radius } from "@/components/theme";
+import { colors, fonts, radius } from "@/components/theme";
 import type { CheckIn } from "@/lib/checkIn";
-import { groupLabels, isoWeekday, programWeek, requestProgram, startProgramDay, WEEKDAYS } from "@/lib/program";
+import { isoWeekday, programWeek, requestProgram, startProgramDay, WEEKDAYS, WEEKDAYS_SHORT } from "@/lib/program";
 import { FOCUSES, formatResult, getTestWorkoutId, TrainingSummary } from "@/lib/training";
 
 // The home screen's training card walks through:
-// goals -> testing workout -> program (build, review, then today's session) + your numbers.
-export function TrainingCard({ summary, checkIn }: { summary: TrainingSummary; checkIn: CheckIn | null }) {
+// goals -> testing workout -> program (build, review), then today's session.
+// `tint` is today's readiness color.
+export function TrainingCard({
+  summary,
+  checkIn,
+  tint = colors.accent,
+}: {
+  summary: TrainingSummary;
+  checkIn: CheckIn | null;
+  tint?: string;
+}) {
   const [building, setBuilding] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -77,16 +86,11 @@ export function TrainingCard({ summary, checkIn }: { summary: TrainingSummary; c
     );
   }
 
-  // 3. Test done: the program, then the numbers.
-  return (
-    <>
-      <ProgramCard summary={summary} checkIn={checkIn} />
-      <NumbersCard summary={summary} building={building} error={error} onRetake={openTest} />
-    </>
-  );
+  // 3. Test done: the program (your numbers live on the Progress tab).
+  return <ProgramCard summary={summary} checkIn={checkIn} tint={tint} />;
 }
 
-function ProgramCard({ summary, checkIn }: { summary: TrainingSummary; checkIn: CheckIn | null }) {
+function ProgramCard({ summary, checkIn, tint }: { summary: TrainingSummary; checkIn: CheckIn | null; tint: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const program = summary.program;
@@ -180,11 +184,12 @@ function ProgramCard({ summary, checkIn }: { summary: TrainingSummary; checkIn: 
     );
   }
 
-  // c) Active: today's session, or the next one.
+  // c) Active: today's focus, big, with one button.
   const today = isoWeekday();
   const day = program.plan.days.find((d) => d.dayOfWeek === today);
   const workout = day && summary.programWorkouts.find((w) => w.week === week && w.day === day.dayOfWeek);
   const next = program.plan.days.find((d) => d.dayOfWeek > today) ?? program.plan.days[0];
+  const classToday = summary.goals?.classDays.includes(today);
 
   const open = () =>
     act(async () => {
@@ -193,72 +198,47 @@ function ProgramCard({ summary, checkIn }: { summary: TrainingSummary; checkIn: 
     });
 
   return (
-    <View style={styles.card}>
+    <Pressable style={styles.card} onPress={() => router.push("/training")}>
       <View style={styles.row}>
-        <Text style={styles.title}>WEEK {week} · TODAY</Text>
-        <View style={styles.links}>
-          <Pressable hitSlop={8} onPress={() => router.push("/chat")}>
-            <Text style={styles.link}>Ask coach</Text>
-          </Pressable>
-          <Pressable hitSlop={8} onPress={() => router.push("/training")}>
-            <Text style={styles.link}>Full program</Text>
-          </Pressable>
-        </View>
+        <Text style={styles.title}>WEEK {week} OF 4</Text>
+        {!!day?.timing && <Text style={styles.timing}>{day.timing}</Text>}
       </View>
-      {revision && (
-        <Pressable onPress={() => router.push("/training")}>
-          <Text style={styles.focus}>{revision} ›</Text>
-        </Pressable>
-      )}
-      {!summary.goals?.liftDays.length && (
-        <Pressable onPress={() => router.push("/goals")}>
-          <Text style={styles.focus}>Set your lifting and MMA days so your coach stops guessing ›</Text>
-        </Pressable>
-      )}
+      {revision && <Text style={[styles.notice, { color: tint }]}>{revision} ›</Text>}
       {day ? (
         <>
-          <Text style={styles.heading}>{day.title}</Text>
-          {!!day.timing && <Text style={styles.focus}>{day.timing}</Text>}
-          {!!day.purpose && <Text style={styles.body}>{day.purpose}</Text>}
-          {day.exercises.map((ex, i) => (
-            <Text key={ex.id} style={styles.exerciseLine}>
-              {groupLabels(day.exercises)[i] ? `${groupLabels(day.exercises)[i]}  ` : ""}
-              {ex.name} ·{" "}
-              {ex.kind === "conditioning"
-                ? `${ex.sets} round${ex.sets === 1 ? "" : "s"}`
-                : `${ex.sets} × ${ex.reps}`}
+          <Text style={styles.label}>Today's focus</Text>
+          <Text style={styles.focusTitle}>{day.title.toUpperCase()}</Text>
+          <View style={styles.footer}>
+            <Text style={styles.footnote}>
+              {classToday ? `MMA ${summary.goals?.classTime || "tonight"}` : `${day.exercises.length} exercises`}
             </Text>
-          ))}
-          {busy ? (
-            <ActivityIndicator color={colors.accent} />
-          ) : (
-            <Button
-              label={
-                workout?.status === "completed"
-                  ? "View workout"
-                  : workout?.status === "in_progress"
-                    ? "Continue workout"
-                    : "Start workout"
-              }
-              onPress={open}
-            />
-          )}
+            {busy ? (
+              <ActivityIndicator color={tint} />
+            ) : (
+              <Pressable style={[styles.start, { backgroundColor: tint }]} onPress={open} hitSlop={6}>
+                <Text style={styles.startText}>
+                  {workout?.status === "completed" ? "VIEW" : workout?.status === "in_progress" ? "CONTINUE" : "START"}
+                </Text>
+              </Pressable>
+            )}
+          </View>
         </>
       ) : (
         <>
-          <Text style={styles.heading}>No lifting today</Text>
-          <Text style={styles.body}>
-            Recover{summary.goals?.classDays.includes(today) ? " and hit your class" : ""}. Next up: {WEEKDAYS[next.dayOfWeek]},{" "}
-            {next.title}.
+          <Text style={styles.label}>Today</Text>
+          <Text style={styles.focusTitle}>{classToday ? "MMA + RECOVERY" : "REST DAY"}</Text>
+          <Text style={styles.footnote}>
+            Next: {WEEKDAYS_SHORT[next.dayOfWeek]} · {next.title}
           </Text>
         </>
       )}
       {error && <Text style={styles.error}>{error}</Text>}
-    </View>
+    </Pressable>
   );
 }
 
-function NumbersCard({
+// Your tested numbers, with a way to retest (shown on the Progress tab).
+export function NumbersCard({
   summary,
   building,
   error,
@@ -313,22 +293,28 @@ function Button({ label, onPress }: { label: string; onPress: () => void }) {
 }
 
 const styles = StyleSheet.create({
-  links: { flexDirection: "row", gap: 16 },
-  card: { backgroundColor: colors.card, borderRadius: radius, padding: 16, gap: 10 },
+  card: { backgroundColor: colors.card, borderRadius: radius, padding: 18, gap: 10 },
   row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  title: { color: colors.muted, fontSize: 13, fontWeight: "700", letterSpacing: 1 },
-  link: { color: colors.accent, fontSize: 15, fontWeight: "600" },
-  focus: { color: colors.accent, fontSize: 13, fontWeight: "600" },
-  heading: { color: colors.text, fontSize: 19, fontWeight: "800" },
-  body: { color: colors.muted, fontSize: 15, lineHeight: 21, flexShrink: 1 },
+  title: { color: colors.muted, fontFamily: fonts.heavy, fontSize: 12, letterSpacing: 1.4 },
+  timing: { color: colors.muted, fontFamily: fonts.medium, fontSize: 12 },
+  link: { color: colors.text, fontFamily: fonts.bold, fontSize: 14 },
+  focus: { color: colors.soft, fontFamily: fonts.semibold, fontSize: 13 },
+  notice: { fontFamily: fonts.bold, fontSize: 13 },
+  label: { color: colors.muted, fontFamily: fonts.medium, fontSize: 13 },
+  focusTitle: { color: colors.text, fontFamily: fonts.black, fontSize: 30, lineHeight: 32, letterSpacing: 0.3 },
+  footer: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 4 },
+  footnote: { color: colors.muted, fontFamily: fonts.medium, fontSize: 13, flexShrink: 1 },
+  start: { borderRadius: 16, paddingVertical: 13, paddingHorizontal: 22 },
+  startText: { color: colors.onAccent, fontFamily: fonts.black, fontSize: 15, letterSpacing: 0.5 },
+  heading: { color: colors.text, fontFamily: fonts.heavy, fontSize: 20 },
+  body: { color: colors.muted, fontFamily: fonts.regular, fontSize: 15, lineHeight: 21, flexShrink: 1 },
   building: { flexDirection: "row", alignItems: "center", gap: 10 },
-  button: { backgroundColor: colors.accent, borderRadius: radius, paddingVertical: 14, alignItems: "center" },
-  buttonText: { color: colors.onAccent, fontSize: 16, fontWeight: "700" },
-  error: { color: "#F87171", fontSize: 14 },
-  retake: { color: colors.muted, fontSize: 14, fontWeight: "600", textAlign: "center" },
-  exerciseLine: { color: colors.text, fontSize: 15, lineHeight: 21 },
+  button: { backgroundColor: colors.accent, borderRadius: 16, paddingVertical: 14, alignItems: "center" },
+  buttonText: { color: colors.onAccent, fontFamily: fonts.heavy, fontSize: 16 },
+  error: { color: colors.danger, fontFamily: fonts.medium, fontSize: 14 },
+  retake: { color: colors.muted, fontFamily: fonts.semibold, fontSize: 14, textAlign: "center" },
   resultRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline" },
-  resultName: { color: colors.text, fontSize: 16, fontWeight: "600", flexShrink: 1 },
-  resultValue: { color: colors.text, fontSize: 20, fontWeight: "800" },
-  resultUnit: { color: colors.muted, fontSize: 12, fontWeight: "600" },
+  resultName: { color: colors.text, fontFamily: fonts.semibold, fontSize: 16, flexShrink: 1 },
+  resultValue: { color: colors.text, fontFamily: fonts.black, fontSize: 20 },
+  resultUnit: { color: colors.muted, fontFamily: fonts.semibold, fontSize: 12 },
 });

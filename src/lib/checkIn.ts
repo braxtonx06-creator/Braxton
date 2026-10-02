@@ -67,3 +67,19 @@ export function useTodayCheckIn() {
 
   return { checkIn, setCheckIn, loaded, error, reload };
 }
+
+// How many days in a row you've checked in, counting back from today (or
+// from yesterday, so the streak doesn't look broken before this morning's).
+export async function loadCheckInStreak(): Promise<number> {
+  const { data, error } = await supabase.from("check_ins").select("day").order("day", { ascending: false }).limit(366);
+  if (error) throw error;
+  const days = new Set((data ?? []).map((r) => r.day as string));
+  const cursor = new Date();
+  if (!days.has(localDate(cursor))) cursor.setDate(cursor.getDate() - 1);
+  let streak = 0;
+  while (days.has(localDate(cursor))) {
+    streak++;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return streak;
+}

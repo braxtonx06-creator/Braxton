@@ -1,33 +1,48 @@
-import { Link, Redirect } from "expo-router";
-import { useState } from "react";
+import { Redirect, router, useFocusEffect } from "expo-router";
+import { useCallback, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import Svg, { Path } from "react-native-svg";
 
 import { CheckInCard } from "@/components/CheckInCard";
-import { CoachChatCard } from "@/components/CoachChatCard";
 import { ErrorState } from "@/components/ErrorState";
+import { ReadinessDial } from "@/components/ReadinessDial";
 import { TrainingCard } from "@/components/TrainingCard";
-import { colors, radius } from "@/components/theme";
-import { placeholderRundown as today } from "@/data/today";
-import { useTodayCheckIn } from "@/lib/checkIn";
+import { colors, fonts } from "@/components/theme";
+import { loadCheckInStreak, useTodayCheckIn } from "@/lib/checkIn";
 import { useCoachMessage } from "@/lib/coach";
 import { useJournal } from "@/lib/journal";
+import { readinessFrom } from "@/lib/readiness";
 import { useTrainingSummary } from "@/lib/training";
 
-export default function HomeScreen() {
+const QUALITY = ["", "Terrible", "Poor", "Okay", "Good", "Great"];
+
+// Today: one call (push / steady / recover) from your check-in, the coach's
+// line, today's focus, and your numbers at a glance.
+export default function TodayScreen() {
   const { journal, error, reload } = useJournal();
   const checkIns = useTodayCheckIn();
   const training = useTrainingSummary();
   const [skippedCheckIn, setSkippedCheckIn] = useState(false);
+  const [editingCheckIn, setEditingCheckIn] = useState(false);
+  const [showWhy, setShowWhy] = useState(false);
+  const [streak, setStreak] = useState<number | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadCheckInStreak()
+        .then(setStreak)
+        .catch(() => setStreak(null)); // the streak is a bonus; never block Today on it
+    }, [checkIns.checkIn?.updatedAt]),
+  );
 
   // The coach waits for the morning check-in (or a skip) so it only runs once,
   // and runs again whenever the check-in is saved.
-  const checkInDone = checkIns.checkIn !== null;
+  const checkIn = checkIns.checkIn;
   const coach = useCoachMessage(
-    !!journal?.completedAt && checkIns.loaded && (checkInDone || skippedCheckIn),
-    checkIns.checkIn?.updatedAt ?? "none",
+    !!journal?.completedAt && checkIns.loaded && (checkIn !== null || skippedCheckIn),
+    checkIn?.updatedAt ?? "none",
   );
-  const { food } = today;
 
   const loadError = error ?? checkIns.error ?? training.error;
   if (loadError) {
@@ -46,117 +61,146 @@ export default function HomeScreen() {
   // First open: the coach needs to meet you before it can plan your day.
   if (!journal.completedAt) return <Redirect href="/onboarding" />;
 
-  const name = journal.answers.name?.trim();
+  const name = journal.answers.name?.trim() || "there";
+  const readiness = checkIn ? readinessFrom(checkIn) : null;
+  const tint = readiness?.color ?? colors.text;
+  const date = new Date().toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
+  const askCheckIn = (!checkIn && !skippedCheckIn) || editingCheckIn;
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
+      <View style={[styles.topLine, { backgroundColor: tint }]} />
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
-          <Text style={styles.date}>{today.date}</Text>
-          <Link href="/journal" asChild>
-            <Pressable hitSlop={12}>
-              <Text style={styles.journalLink}>Journal</Text>
-            </Pressable>
-          </Link>
-        </View>
-        <Text style={styles.title}>{name ? `Today, ${name}` : "Today"}</Text>
-
-        {/* Before checking in, the check-in card comes first. */}
-        {!checkInDone && !skippedCheckIn && (
-          <CheckInCard checkIn={null} onSaved={checkIns.setCheckIn} onSkip={() => setSkippedCheckIn(true)} />
-        )}
-
-        {/* The coach's sentence and why, written by Claude from your journal and check-in */}
-        <View style={styles.coach}>
-          <Text style={styles.coachLabel}>COACH</Text>
-          {!checkInDone && !skippedCheckIn ? (
-            <Text style={styles.body}>Check in above and I'll tell you how to attack today.</Text>
-          ) : coach.message ? (
-            <>
-              <Text style={styles.coachText}>{coach.message.sentence}</Text>
-              {coach.message.why && <Text style={styles.why}>Why: {coach.message.why}</Text>}
-            </>
-          ) : coach.error ? (
-            <>
-              <Text style={styles.body}>Couldn't reach your coach: {coach.error}</Text>
-              <Pressable onPress={coach.retry} hitSlop={8}>
-                <Text style={styles.journalLink}>Try again</Text>
-              </Pressable>
-            </>
-          ) : (
-            <View style={styles.thinking}>
-              <ActivityIndicator color={colors.accent} />
-              <Text style={styles.body}>Your coach is thinking…</Text>
+          <Pressable
+            style={[styles.avatar, { borderColor: tint }]}
+            onPress={() => router.push("/you")}
+            accessibilityLabel="Your profile"
+          >
+            <Text style={styles.avatarText}>{name.slice(0, 1).toUpperCase()}</Text>
+          </Pressable>
+          <View style={styles.headerText}>
+            <Text style={styles.date}>{date}</Text>
+            <Text style={styles.name}>{name}</Text>
+          </View>
+          {streak !== null && streak > 0 && (
+            <View style={styles.streak}>
+              <Svg width={16} height={16} viewBox="0 0 24 24" fill={tint}>
+                <Path d="M12 2c1 4 5 6 5 11a5 5 0 0 1-10 0c0-2 1-3.5 2-4.5 0 2 1 3 2 3 0-3-1-6 1-9.5z" />
+              </Svg>
+              <Text style={styles.streakValue}>{streak}</Text>
+              <Text style={styles.streakLabel}>day streak</Text>
             </View>
           )}
         </View>
 
-        <CoachChatCard />
-
-        {/* After checking in, the summary sits under the coach (tap Edit to change it). */}
-        {checkInDone && <CheckInCard checkIn={checkIns.checkIn} onSaved={checkIns.setCheckIn} />}
-
-        <TrainingCard summary={training.summary} checkIn={checkIns.checkIn} />
-
-        <Section title="Food · sample">
-          <View style={styles.stats}>
-            <Stat label="Calories" value={food.calories.toLocaleString()} />
-            <Stat label="Protein" value={`${food.proteinG} g`} />
-            <Stat label="Carbs" value={`${food.carbsG} g`} />
-            <Stat label="Fat" value={`${food.fatG} g`} />
+        {askCheckIn ? (
+          <CheckInCard
+            checkIn={checkIn}
+            startEditing={editingCheckIn}
+            onSaved={(c) => {
+              checkIns.setCheckIn(c);
+              setEditingCheckIn(false);
+            }}
+            onSkip={() => setSkippedCheckIn(true)}
+          />
+        ) : (
+          <View style={styles.call}>
+            <View style={styles.callText}>
+              <Text style={[styles.verdict, { color: tint }, readiness?.level === "recover" && styles.verdictLong]}>
+                {readiness?.verdict ?? "TODAY"}
+              </Text>
+              {coach.message ? (
+                <Pressable onPress={() => setShowWhy(!showWhy)} hitSlop={6}>
+                  <Text style={styles.line}>{coach.message.sentence}</Text>
+                  {showWhy && coach.message.why ? (
+                    <Text style={styles.why}>{coach.message.why}</Text>
+                  ) : coach.message.why ? (
+                    <Text style={styles.whyLink}>Why ›</Text>
+                  ) : null}
+                </Pressable>
+              ) : coach.error ? (
+                <Pressable onPress={coach.retry} hitSlop={6}>
+                  <Text style={styles.why}>Couldn't reach your coach. Tap to retry.</Text>
+                </Pressable>
+              ) : (
+                <View style={styles.thinking}>
+                  <ActivityIndicator color={colors.muted} size="small" />
+                  <Text style={styles.why}>Your coach is thinking…</Text>
+                </View>
+              )}
+            </View>
+            {readiness && <ReadinessDial percent={readiness.percent} color={readiness.color} />}
           </View>
-          <Text style={styles.body}>{food.note}</Text>
-        </Section>
+        )}
 
-        <Text style={styles.footer}>Food is sample data for now. Meal logging comes in a later milestone.</Text>
+        <TrainingCard summary={training.summary} checkIn={checkIn} tint={readiness?.color ?? colors.accent} />
+
+        <View style={styles.tiles}>
+          <Tile label="WEIGHT" value="—" note="Log it · soon" />
+          <Tile label="FOOD" value="—" note="Snap a meal · soon" />
+          <Tile
+            label="SLEEP"
+            value={checkIn ? `${checkIn.sleepHours}h` : "—"}
+            note={checkIn ? QUALITY[checkIn.sleepQuality] : "Check in"}
+            onPress={checkIn ? () => setEditingCheckIn(true) : undefined}
+          />
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Tile({ label, value, note, onPress }: { label: string; value: string; note: string; onPress?: () => void }) {
   return (
-    <View style={styles.card}>
-      <Text style={styles.cardTitle}>{title}</Text>
-      {children}
-    </View>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.stat}>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </View>
+    <Pressable style={styles.tile} onPress={onPress} disabled={!onPress}>
+      <Text style={styles.tileLabel}>{label}</Text>
+      <Text style={styles.tileValue}>{value}</Text>
+      <Text style={styles.tileNote}>{note}</Text>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 20, gap: 14, paddingBottom: 120 },
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  date: { color: colors.muted, fontSize: 14 },
-  journalLink: { color: colors.accent, fontSize: 15, fontWeight: "600" },
-  thinking: { flexDirection: "row", alignItems: "center", gap: 10 },
-  title: { color: colors.text, fontSize: 34, fontWeight: "800", marginBottom: 4 },
-  coach: {
-    backgroundColor: colors.card,
-    borderRadius: radius,
-    borderLeftWidth: 4,
-    borderLeftColor: colors.accent,
-    padding: 16,
-    gap: 6,
+  topLine: { height: 3 },
+  content: { padding: 20, gap: 16, paddingBottom: 120 },
+  header: { flexDirection: "row", alignItems: "center", gap: 12 },
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 2,
+    backgroundColor: colors.raised,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  coachLabel: { color: colors.accent, fontSize: 12, fontWeight: "700", letterSpacing: 1 },
-  coachText: { color: colors.text, fontSize: 18, lineHeight: 25, fontWeight: "600" },
-  why: { color: colors.muted, fontSize: 14, lineHeight: 20, marginTop: 2 },
-  card: { backgroundColor: colors.card, borderRadius: radius, padding: 16, gap: 10 },
-  cardTitle: { color: colors.muted, fontSize: 13, fontWeight: "700", textTransform: "uppercase", letterSpacing: 1 },
-  stats: { flexDirection: "row", gap: 18, flexWrap: "wrap" },
-  stat: { gap: 2 },
-  statValue: { color: colors.text, fontSize: 17, fontWeight: "700" },
-  statLabel: { color: colors.muted, fontSize: 12 },
-  body: { color: colors.muted, fontSize: 15, lineHeight: 21 },
-  footer: { color: colors.muted, fontSize: 12, textAlign: "center", marginTop: 8 },
+  avatarText: { color: colors.text, fontFamily: fonts.black, fontSize: 18 },
+  headerText: { flex: 1 },
+  date: { color: colors.muted, fontFamily: fonts.medium, fontSize: 13 },
+  name: { color: colors.text, fontFamily: fonts.heavy, fontSize: 17 },
+  streak: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: colors.card,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 14,
+  },
+  streakValue: { color: colors.text, fontFamily: fonts.black, fontSize: 15 },
+  streakLabel: { color: colors.muted, fontFamily: fonts.medium, fontSize: 12 },
+  call: { flexDirection: "row", alignItems: "center", gap: 14 },
+  callText: { flex: 1, gap: 6 },
+  verdict: { fontFamily: fonts.black, fontSize: 56, lineHeight: 58, letterSpacing: -0.5 },
+  verdictLong: { fontSize: 40, lineHeight: 44 },
+  line: { color: colors.soft, fontFamily: fonts.semibold, fontSize: 15, lineHeight: 21 },
+  whyLink: { color: colors.muted, fontFamily: fonts.bold, fontSize: 13, marginTop: 4 },
+  why: { color: colors.muted, fontFamily: fonts.regular, fontSize: 14, lineHeight: 20, marginTop: 4 },
+  thinking: { flexDirection: "row", alignItems: "center", gap: 8 },
+  tiles: { flexDirection: "row", gap: 10 },
+  tile: { flex: 1, backgroundColor: colors.card, borderRadius: 18, padding: 14, gap: 4 },
+  tileLabel: { color: colors.muted, fontFamily: fonts.heavy, fontSize: 11, letterSpacing: 1 },
+  tileValue: { color: colors.text, fontFamily: fonts.black, fontSize: 24 },
+  tileNote: { color: colors.muted, fontFamily: fonts.medium, fontSize: 11 },
 });

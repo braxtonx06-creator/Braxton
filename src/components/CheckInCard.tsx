@@ -11,12 +11,14 @@ export function CheckInCard({
   checkIn,
   onSaved,
   onSkip,
+  startEditing = false,
 }: {
   checkIn: CheckIn | null;
+  startEditing?: boolean;
   onSaved: (c: CheckIn) => void;
   onSkip?: () => void;
 }) {
-  const [editing, setEditing] = useState(checkIn === null);
+  const [editing, setEditing] = useState(checkIn === null || startEditing);
   const [sleepHours, setSleepHours] = useState(checkIn?.sleepHours ?? 7.5);
   const [sleepQuality, setSleepQuality] = useState(checkIn?.sleepQuality ?? 0);
   const [feeling, setFeeling] = useState(checkIn?.feeling ?? 0);

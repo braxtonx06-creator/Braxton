@@ -22,7 +22,7 @@ Built with Expo (React Native), Expo Router and TypeScript. iPhone first.
 ```
 src/app/          screens (each file is a route; _layout.tsx wraps them)
 src/components/   shared UI and theme
-src/data/         static data (journal questions, placeholder rundown)
+src/data/         static data (journal questions)
 src/lib/          Supabase client, sign-in session, journal storage
 supabase/         database migrations and the coach-sentence Edge Function
 ```

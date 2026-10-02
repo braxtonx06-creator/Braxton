@@ -1,26 +1,53 @@
-import { StyleSheet, Text, View } from "react-native";
+import { router } from "expo-router";
+import { useState } from "react";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { NumbersCard } from "@/components/TrainingCard";
 import { colors, fonts, radius } from "@/components/theme";
+import { getTestWorkoutId, useTrainingSummary } from "@/lib/training";
 
-// Your PRs and the road to your goals. Filled in by the next redesign step.
+// Your tested numbers for now; the road to your goals and PR trends come next.
 export default function ProgressScreen() {
+  const { summary } = useTrainingSummary();
+  const [building, setBuilding] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const retake = async () => {
+    setBuilding(true);
+    setError(null);
+    try {
+      router.push(`/workout/${await getTestWorkoutId()}`);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBuilding(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
-      <View style={styles.content}>
+      <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>Progress</Text>
+        {summary?.test?.status === "completed" ? (
+          <NumbersCard summary={summary} building={building} error={error} onRetake={retake} />
+        ) : (
+          <View style={styles.card}>
+            <Text style={styles.body}>Finish your testing workout and your numbers show up here.</Text>
+          </View>
+        )}
         <View style={styles.card}>
           <Text style={styles.label}>COMING NEXT</Text>
-          <Text style={styles.body}>Your road to 315, PRs and trends land here in the next update.</Text>
+          <Text style={styles.body}>The road to your goals, PRs and trends.</Text>
         </View>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 20, gap: 16 },
+  content: { padding: 20, gap: 16, paddingBottom: 120 },
   title: { color: colors.text, fontFamily: fonts.black, fontSize: 30 },
   card: { backgroundColor: colors.card, borderRadius: radius, padding: 18, gap: 6 },
   label: { color: colors.muted, fontFamily: fonts.heavy, fontSize: 12, letterSpacing: 1.4 },

@@ -4,6 +4,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Path } from "react-native-svg";
 
+import { Avatar, useAvatar } from "@/components/Avatar";
 import { CheckInCard } from "@/components/CheckInCard";
 import { ErrorState } from "@/components/ErrorState";
 import { ReadinessDial } from "@/components/ReadinessDial";
@@ -23,6 +24,7 @@ export default function TodayScreen() {
   const { journal, error, reload } = useJournal();
   const checkIns = useTodayCheckIn();
   const training = useTrainingSummary();
+  const avatar = useAvatar();
   const [skippedCheckIn, setSkippedCheckIn] = useState(false);
   const [editingCheckIn, setEditingCheckIn] = useState(false);
   const [showWhy, setShowWhy] = useState(false);
@@ -72,12 +74,8 @@ export default function TodayScreen() {
       <View style={[styles.topLine, { backgroundColor: tint }]} />
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
-          <Pressable
-            style={[styles.avatar, { borderColor: tint }]}
-            onPress={() => router.push("/you")}
-            accessibilityLabel="Your profile"
-          >
-            <Text style={styles.avatarText}>{name.slice(0, 1).toUpperCase()}</Text>
+          <Pressable onPress={() => router.push("/you")} accessibilityLabel="Your profile">
+            <Avatar id={avatar} name={name} size={44} ring={tint} />
           </Pressable>
           <View style={styles.headerText}>
             <Text style={styles.date}>{date}</Text>
@@ -166,16 +164,6 @@ const styles = StyleSheet.create({
   topLine: { height: 3 },
   content: { padding: 20, gap: 16, paddingBottom: 120 },
   header: { flexDirection: "row", alignItems: "center", gap: 12 },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 2,
-    backgroundColor: colors.raised,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarText: { color: colors.text, fontFamily: fonts.black, fontSize: 18 },
   headerText: { flex: 1 },
   date: { color: colors.muted, fontFamily: fonts.medium, fontSize: 13 },
   name: { color: colors.text, fontFamily: fonts.heavy, fontSize: 17 },

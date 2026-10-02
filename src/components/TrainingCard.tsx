@@ -5,7 +5,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 import { colors, fonts, radius } from "@/components/theme";
 import type { CheckIn } from "@/lib/checkIn";
 import { isoWeekday, programWeek, requestProgram, startProgramDay, WEEKDAYS, WEEKDAYS_SHORT } from "@/lib/program";
-import { FOCUSES, formatResult, getTestWorkoutId, TrainingSummary } from "@/lib/training";
+import { FOCUSES, getTestWorkoutId, TrainingSummary } from "@/lib/training";
 
 // The home screen's training card walks through:
 // goals -> testing workout -> program (build, review), then today's session.
@@ -35,9 +35,7 @@ export function TrainingCard({
     }
   };
 
-  const focusText = summary.goals?.focuses
-    .map((id) => FOCUSES.find((f) => f.id === id)?.label ?? id)
-    .join(" · ");
+  const focusText = summary.goals?.focuses.map((id) => FOCUSES.find((f) => f.id === id)?.label ?? id).join(" · ");
 
   // 1. No goals yet.
   if (!summary.goals) {
@@ -46,7 +44,8 @@ export function TrainingCard({
         <Text style={styles.title}>TRAINING</Text>
         <Text style={styles.heading}>Set up your training</Text>
         <Text style={styles.body}>
-          Tell your coach what you're training for. Then you'll take a testing workout so your program starts from real numbers.
+          Tell your coach what you're training for. Then you'll take a testing workout so your program starts from real
+          numbers.
         </Text>
         <Button label="Pick your goals" onPress={() => router.push("/goals")} />
       </View>
@@ -69,7 +68,8 @@ export function TrainingCard({
         <Text style={styles.focus}>{focusText}</Text>
         <Text style={styles.heading}>Testing workout</Text>
         <Text style={styles.body}>
-          Warm-ups, then 2 reps with one left in the tank on your main lifts, plus tests for your other goals. About an hour.
+          Warm-ups, then 2 reps with one left in the tank on your main lifts, plus tests for your other goals. About an
+          hour.
         </Text>
         {building ? (
           <View style={styles.building}>
@@ -152,7 +152,10 @@ function ProgramCard({ summary, checkIn, tint }: { summary: TrainingSummary; che
         {busy ? (
           <ActivityIndicator color={colors.accent} />
         ) : pending ? (
-          <Button label={pending.status === "draft" ? "Review program" : "Open"} onPress={() => router.push("/training")} />
+          <Button
+            label={pending.status === "draft" ? "Review program" : "Open"}
+            onPress={() => router.push("/training")}
+          />
         ) : (
           <Button label="Build my program" onPress={build} />
         )}
@@ -237,53 +240,6 @@ function ProgramCard({ summary, checkIn, tint }: { summary: TrainingSummary; che
   );
 }
 
-// Your tested numbers, with a way to retest (shown on the Progress tab).
-export function NumbersCard({
-  summary,
-  building,
-  error,
-  onRetake,
-}: {
-  summary: TrainingSummary;
-  building: boolean;
-  error: string | null;
-  onRetake: () => void;
-}) {
-  return (
-    <View style={styles.card}>
-      <View style={styles.row}>
-        <Text style={styles.title}>YOUR NUMBERS</Text>
-        <Pressable hitSlop={8} onPress={() => router.push(`/workout/${summary.test!.id}`)}>
-          <Text style={styles.link}>View test</Text>
-        </Pressable>
-      </View>
-      {summary.baselines.map((b) => {
-        const shown = formatResult(b.value, b.unit);
-        return (
-          <View key={b.metric} style={styles.resultRow}>
-            <Text style={styles.resultName}>{b.name}</Text>
-            <Text style={styles.resultValue}>
-              {shown.value} <Text style={styles.resultUnit}>{shown.unit}</Text>
-            </Text>
-          </View>
-        );
-      })}
-      {building ? (
-        <View style={styles.building}>
-          <ActivityIndicator color={colors.accent} />
-          <Text style={styles.body}>Your coach is designing a new test…</Text>
-        </View>
-      ) : (
-        // A new test replaces these numbers (the latest result per test is used).
-        <Pressable hitSlop={8} onPress={onRetake}>
-          <Text style={styles.retake}>Retake test</Text>
-        </Pressable>
-      )}
-      {error && <Text style={styles.error}>{error}</Text>}
-    </View>
-  );
-}
-
 function Button({ label, onPress }: { label: string; onPress: () => void }) {
   return (
     <Pressable style={styles.button} onPress={onPress}>
@@ -312,9 +268,4 @@ const styles = StyleSheet.create({
   button: { backgroundColor: colors.accent, borderRadius: 16, paddingVertical: 14, alignItems: "center" },
   buttonText: { color: colors.onAccent, fontFamily: fonts.heavy, fontSize: 16 },
   error: { color: colors.danger, fontFamily: fonts.medium, fontSize: 14 },
-  retake: { color: colors.muted, fontFamily: fonts.semibold, fontSize: 14, textAlign: "center" },
-  resultRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline" },
-  resultName: { color: colors.text, fontFamily: fonts.semibold, fontSize: 16, flexShrink: 1 },
-  resultValue: { color: colors.text, fontFamily: fonts.black, fontSize: 20 },
-  resultUnit: { color: colors.muted, fontFamily: fonts.semibold, fontSize: 12 },
 });

@@ -15,7 +15,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ErrorState } from "@/components/ErrorState";
-import { colors, radius } from "@/components/theme";
+import { colors, disabledFill, disabledText, radius } from "@/components/theme";
 import { ChatMessage, clearChat, loadChat, sendChat } from "@/lib/chat";
 import { loadProgramState, requestRevision } from "@/lib/program";
 
@@ -168,14 +168,14 @@ export default function ChatScreen() {
                   <Text style={styles.proposalText}>{m.proposal}</Text>
                   {m === lastCoach && programId && (
                     <Pressable
-                      style={[styles.button, rewriting && styles.disabled]}
+                      style={[styles.button, sending && !rewriting && disabledFill]}
                       disabled={rewriting || sending}
                       onPress={() => rewrite(m.proposal!)}
                     >
                       {rewriting ? (
                         <ActivityIndicator color={colors.onAccent} />
                       ) : (
-                        <Text style={styles.buttonText}>Rewrite my program</Text>
+                        <Text style={[styles.buttonText, sending && disabledText]}>Rewrite my program</Text>
                       )}
                     </Pressable>
                   )}
@@ -203,11 +203,11 @@ export default function ChatScreen() {
             maxLength={2000}
           />
           <Pressable
-            style={[styles.send, (!text.trim() || sending) && styles.disabled]}
+            style={[styles.send, (!text.trim() || sending) && disabledFill]}
             disabled={!text.trim() || sending}
             onPress={() => send(text)}
           >
-            <Text style={styles.buttonText}>Send</Text>
+            <Text style={[styles.buttonText, (!text.trim() || sending) && disabledText]}>Send</Text>
           </Pressable>
         </View>
       </KeyboardAvoidingView>
@@ -238,7 +238,6 @@ const styles = StyleSheet.create({
   proposalText: { color: colors.text, fontSize: 14, lineHeight: 20 },
   button: { backgroundColor: colors.accent, borderRadius: 12, paddingVertical: 12, alignItems: "center" },
   buttonText: { color: colors.onAccent, fontSize: 16, fontWeight: "700" },
-  disabled: { opacity: 0.5 },
   composer: {
     flexDirection: "row",
     alignItems: "flex-end",

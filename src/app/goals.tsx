@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { colors, radius } from "@/components/theme";
+import { colors, disabledFill, disabledText, radius } from "@/components/theme";
 import { WEEKDAYS_SHORT } from "@/lib/program";
 import { FOCUSES, loadTrainingSummary, saveGoals } from "@/lib/training";
 
@@ -130,11 +130,11 @@ export default function GoalsScreen() {
         {error && <Text style={styles.error}>{error}</Text>}
         {!liftDays.length && primary && <Text style={styles.muted}>Pick at least one lifting day.</Text>}
         <Pressable
-          style={[styles.button, (!primary || !liftDays.length || saving) && styles.disabled]}
+          style={[styles.button, (!primary || !liftDays.length) && !saving && disabledFill]}
           disabled={!primary || !liftDays.length || saving}
           onPress={save}
         >
-          {saving ? <ActivityIndicator color={colors.onAccent} /> : <Text style={styles.buttonText}>Save goals</Text>}
+          {saving ? <ActivityIndicator color={colors.onAccent} /> : <Text style={[styles.buttonText, (!primary || !liftDays.length) && disabledText]}>Save goals</Text>}
         </Pressable>
       </ScrollView>
     </SafeAreaView>
@@ -210,6 +210,5 @@ const styles = StyleSheet.create({
   chipTextOn: { color: colors.onAccent },
   button: { backgroundColor: colors.accent, borderRadius: radius, paddingVertical: 16, alignItems: "center", marginTop: 8 },
   buttonText: { color: colors.onAccent, fontSize: 17, fontWeight: "700" },
-  disabled: { opacity: 0.4 },
   error: { color: "#F87171", fontSize: 14 },
 });

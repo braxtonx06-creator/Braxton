@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
-import { colors } from "@/components/theme";
+import { colors, disabledFill, disabledText } from "@/components/theme";
 import { swapExercise } from "@/lib/program";
 
 const REASONS = ["Don't have the equipment", "Pain or discomfort", "Don't like it", "Want more challenge"];
@@ -54,14 +54,14 @@ export function SwapBox({
         placeholderTextColor={colors.muted}
       />
       {error && <Text style={styles.error}>{error}</Text>}
-      <Pressable style={[styles.button, (busy || !reason.trim()) && styles.disabled]} disabled={busy || !reason.trim()} onPress={swap}>
+      <Pressable style={[styles.button, !busy && !reason.trim() && disabledFill]} disabled={busy || !reason.trim()} onPress={swap}>
         {busy ? (
           <View style={styles.row}>
             <ActivityIndicator color={colors.onAccent} />
             <Text style={styles.buttonText}>Finding a replacement…</Text>
           </View>
         ) : (
-          <Text style={styles.buttonText}>Swap exercise</Text>
+          <Text style={[styles.buttonText, !reason.trim() && disabledText]}>Swap exercise</Text>
         )}
       </Pressable>
     </View>
@@ -88,6 +88,5 @@ const styles = StyleSheet.create({
   button: { backgroundColor: colors.accent, borderRadius: 10, paddingVertical: 12, alignItems: "center" },
   buttonText: { color: colors.onAccent, fontSize: 15, fontWeight: "700" },
   row: { flexDirection: "row", alignItems: "center", gap: 8 },
-  disabled: { opacity: 0.5 },
   error: { color: "#F87171", fontSize: 13 },
 });

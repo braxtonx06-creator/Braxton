@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { colors, radius } from "@/components/theme";
+import { colors, disabledFill, disabledText, radius } from "@/components/theme";
 import { supabase } from "@/lib/supabase";
 
 // Email + password sign in. Once signed in, the root layout switches to the app.
@@ -78,11 +78,11 @@ export default function SignInScreen() {
 
         {message && <Text style={message.isError ? styles.error : styles.info}>{message.text}</Text>}
 
-        <Pressable style={[styles.button, !canSubmit && styles.disabled]} disabled={!canSubmit} onPress={submit}>
+        <Pressable style={[styles.button, !canSubmit && !busy && disabledFill]} disabled={!canSubmit} onPress={submit}>
           {busy ? (
             <ActivityIndicator color={colors.onAccent} />
           ) : (
-            <Text style={styles.buttonText}>{mode === "signIn" ? "Sign in" : "Create account"}</Text>
+            <Text style={[styles.buttonText, !canSubmit && disabledText]}>{mode === "signIn" ? "Sign in" : "Create account"}</Text>
           )}
         </Pressable>
 
@@ -117,7 +117,6 @@ const styles = StyleSheet.create({
   },
   button: { backgroundColor: colors.accent, borderRadius: radius, paddingVertical: 16, alignItems: "center" },
   buttonText: { color: colors.onAccent, fontSize: 17, fontWeight: "700" },
-  disabled: { opacity: 0.4 },
   switch: { color: colors.accent, fontSize: 15, fontWeight: "600", textAlign: "center", marginTop: 4 },
   error: { color: "#F87171", fontSize: 14 },
   info: { color: colors.good, fontSize: 14 },

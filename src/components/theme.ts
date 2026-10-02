@@ -37,3 +37,9 @@ export const fonts = {
   heavy: "Archivo_800ExtraBold",
   black: "Archivo_900Black",
 };
+
+// A button that can't be pressed yet is flat grey. (Fading the accent instead
+// turns volt green into a muddy olive.) While a button is busy with a spinner
+// it keeps its accent fill.
+export const disabledFill = { backgroundColor: colors.raised };
+export const disabledText = { color: colors.faint };

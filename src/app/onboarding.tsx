@@ -12,7 +12,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ErrorState } from "@/components/ErrorState";
-import { colors, radius } from "@/components/theme";
+import { colors, disabledFill, disabledText, radius } from "@/components/theme";
 import { onboardingQuestions as questions } from "@/data/onboarding";
 import { Journal, loadJournal, saveJournal } from "@/lib/journal";
 
@@ -107,11 +107,11 @@ export default function OnboardingScreen() {
             <Text style={styles.secondaryText}>Back</Text>
           </Pressable>
           <Pressable
-            style={[styles.button, styles.primary, !canContinue && styles.disabled]}
+            style={[styles.button, styles.primary, !canContinue && disabledFill]}
             disabled={!canContinue}
             onPress={next}
           >
-            <Text style={styles.primaryText}>{isLast ? "Finish" : answer.trim() ? "Next" : "Skip"}</Text>
+            <Text style={[styles.primaryText, !canContinue && disabledText]}>{isLast ? "Finish" : answer.trim() ? "Next" : "Skip"}</Text>
           </Pressable>
         </View>
       </KeyboardAvoidingView>
@@ -145,7 +145,6 @@ const styles = StyleSheet.create({
   primaryText: { color: colors.onAccent, fontSize: 17, fontWeight: "700" },
   secondary: { backgroundColor: colors.card },
   secondaryText: { color: colors.text, fontSize: 17, fontWeight: "600" },
-  disabled: { opacity: 0.4 },
   hidden: { opacity: 0 },
   error: { color: "#F87171", fontSize: 14 },
 });

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
-import { colors, radius } from "@/components/theme";
+import { colors, disabledFill, disabledText, radius } from "@/components/theme";
 import { WEEKDAYS, WEEKDAYS_SHORT } from "@/lib/program";
 import { loadTrainingSummary, saveWeek, Week } from "@/lib/training";
 
@@ -117,14 +117,14 @@ export function WeekCard({ onChange }: { onChange?: (week: Week) => void }) {
 
       {error && <Text style={styles.error}>{error}</Text>}
       <Pressable
-        style={[styles.button, (!week.liftDays.length || saving) && styles.disabled]}
+        style={[styles.button, !week.liftDays.length && !saving && disabledFill]}
         disabled={!week.liftDays.length || saving}
         onPress={save}
       >
         {saving ? (
           <ActivityIndicator color={colors.onAccent} />
         ) : (
-          <Text style={styles.buttonText}>{week.liftDays.length ? "Save my week" : "Pick at least one lifting day"}</Text>
+          <Text style={[styles.buttonText, !week.liftDays.length && disabledText]}>{week.liftDays.length ? "Save my week" : "Pick at least one lifting day"}</Text>
         )}
       </Pressable>
     </View>
@@ -178,6 +178,5 @@ const styles = StyleSheet.create({
   },
   button: { backgroundColor: colors.accent, borderRadius: 12, paddingVertical: 13, alignItems: "center", marginTop: 4 },
   buttonText: { color: colors.onAccent, fontSize: 15, fontWeight: "700" },
-  disabled: { opacity: 0.5 },
   error: { color: "#F87171", fontSize: 13 },
 });

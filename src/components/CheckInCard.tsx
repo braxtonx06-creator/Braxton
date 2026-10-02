@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 
-import { colors, radius } from "@/components/theme";
+import { colors, disabledFill, disabledText, radius } from "@/components/theme";
 import { CheckIn, saveTodayCheckIn } from "@/lib/checkIn";
 
 const LABELS = ["", "Terrible", "Poor", "Okay", "Good", "Great"];
@@ -78,8 +78,12 @@ export function CheckInCard({
 
       {error && <Text style={styles.error}>{error}</Text>}
 
-      <Pressable style={[styles.button, !canSave && styles.disabled]} disabled={!canSave} onPress={save}>
-        {saving ? <ActivityIndicator color={colors.onAccent} /> : <Text style={styles.buttonText}>Save check-in</Text>}
+      <Pressable style={[styles.button, !canSave && !saving && disabledFill]} disabled={!canSave} onPress={save}>
+        {saving ? (
+          <ActivityIndicator color={colors.onAccent} />
+        ) : (
+          <Text style={[styles.buttonText, !canSave && disabledText]}>Save check-in</Text>
+        )}
       </Pressable>
       {onSkip && !checkIn && (
         <Pressable onPress={onSkip} hitSlop={8}>
@@ -164,7 +168,6 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   buttonText: { color: colors.onAccent, fontSize: 16, fontWeight: "700" },
-  disabled: { opacity: 0.4 },
   skip: { color: colors.muted, fontSize: 14, textAlign: "center" },
   error: { color: "#F87171", fontSize: 14 },
   stats: { flexDirection: "row", gap: 22, flexWrap: "wrap" },

@@ -44,6 +44,14 @@ const fmtRest = (s: number) =>
       ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`
       : `${s} s`;
 
+// The instructions repeat the target already shown under the name, so drop it.
+function notesOnly(ex: { instructions?: string; sets: { target: string }[] }) {
+  const target = ex.sets[0]?.target ?? "";
+  const text = ex.instructions ?? "";
+  if (!target || !text.startsWith(target)) return text;
+  return text.slice(target.length).replace(/^[.\s]+/, "");
+}
+
 // One block of the session: a single exercise, or a superset done back to back.
 type Block = { exercises: { ex: PlanExercise; label: string }[]; superset: boolean };
 
@@ -287,7 +295,11 @@ export default function WorkoutScreen() {
                             {ex.name}
                           </Text>
                           <Text style={styles.exTarget}>
-                            {varied ? `${ex.sets.length} sets` : `${ex.sets.length} × ${ex.sets[0]?.target}`}
+                            {varied
+                              ? `${ex.sets.length} sets`
+                              : ex.sets.length === 1
+                                ? ex.sets[0]?.target
+                                : `${ex.sets.length} × ${ex.sets[0]?.target}`}
                           </Text>
                         </View>
                         {top > 0 && (
@@ -298,7 +310,7 @@ export default function WorkoutScreen() {
                         )}
                       </View>
                       {!completed && !!ex.purpose && <Text style={styles.purpose}>{ex.purpose}</Text>}
-                      {!completed && !!ex.instructions && <Text style={styles.instructions}>{ex.instructions}</Text>}
+                      {!completed && !!notesOnly(ex) && <Text style={styles.instructions}>{notesOnly(ex)}</Text>}
                       {canSwap(ex) && (
                         <Pressable hitSlop={8} onPress={() => setSwapping(swapping === ex.id ? null : ex.id)}>
                           <Text style={styles.swap}>{swapping === ex.id ? "Cancel" : "Swap"}</Text>
@@ -362,7 +374,7 @@ export default function WorkoutScreen() {
                                   </>
                                 ) : (
                                   <NumberBox
-                                    label={ex.unit}
+                                    label={/sec/i.test(ex.unit) ? "time" : ex.unit}
                                     value={entry.value}
                                     placeholder={/sec/i.test(ex.unit) ? "m:ss" : "–"}
                                     allowTime={/sec/i.test(ex.unit)}

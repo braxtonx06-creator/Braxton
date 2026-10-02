@@ -1,5 +1,6 @@
 import { router, Tabs } from "expo-router";
 import { ColorValue, Pressable, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle, Path } from "react-native-svg";
 
 import { colors, fonts } from "@/components/theme";
@@ -7,19 +8,24 @@ import { colors, fonts } from "@/components/theme";
 // The four main screens along the bottom, plus the Coach button that floats
 // above every one of them.
 export default function TabsLayout() {
+  const insets = useSafeAreaInsets();
   return (
     <View style={styles.root}>
       <Tabs
         screenOptions={{
           headerShown: false,
           sceneStyle: { backgroundColor: colors.bg },
-          tabBarStyle: { backgroundColor: colors.tabBar, borderTopColor: colors.line },
+          // Archivo's labels sit lower than the system font, so give the bar a little more room.
+          tabBarStyle: { backgroundColor: colors.tabBar, borderTopColor: colors.line, height: 56 + insets.bottom },
           tabBarActiveTintColor: colors.text,
           tabBarInactiveTintColor: colors.faint,
           tabBarLabelStyle: { fontFamily: fonts.bold, fontSize: 11 },
         }}
       >
-        <Tabs.Screen name="index" options={{ title: "Today", tabBarIcon: ({ color }) => <TodayIcon color={color} /> }} />
+        <Tabs.Screen
+          name="index"
+          options={{ title: "Today", tabBarIcon: ({ color }) => <TodayIcon color={color} /> }}
+        />
         <Tabs.Screen
           name="training"
           options={{ title: "Training", tabBarIcon: ({ color }) => <TrainingIcon color={color} /> }}

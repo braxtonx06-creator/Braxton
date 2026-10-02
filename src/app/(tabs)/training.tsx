@@ -220,7 +220,9 @@ export default function ProgramScreen() {
           {kicker}
         </Text>
         <Text style={styles.title}>{plan.name}</Text>
-        <Text style={styles.body}>{plan.summary}</Text>
+        <Text style={styles.body} numberOfLines={showWhy ? undefined : 3}>
+          {plan.summary}
+        </Text>
         <View style={styles.links}>
           {!!plan.rationale?.length && (
             <Pressable hitSlop={8} onPress={() => setShowWhy(!showWhy)}>

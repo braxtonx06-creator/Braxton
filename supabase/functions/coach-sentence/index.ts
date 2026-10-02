@@ -1,9 +1,10 @@
 // Supabase Edge Function: writes today's coach message (one sentence + why).
 //
 // The app calls this with the user's login token. The function reads that
-// user's journal and today's check-in (row level security still applies),
-// asks Claude for the message, and saves it in coach_messages. The saved
-// message is reused all day, and rewritten only when the check-in changes.
+// user's journal, today's check-in and today's planned session (row level
+// security still applies), asks Claude for the message, and saves it in
+// coach_messages. The saved message is reused all day, and rewritten only
+// when the check-in changes.
 // The Anthropic API key lives only here, as the ANTHROPIC_API_KEY secret.
 
 import Anthropic from "npm:@anthropic-ai/sdk";
@@ -25,7 +26,8 @@ If they did today's morning check-in, react to it: short or poor sleep, or feeli
 Rules:
 - Actionable first: what to do, then why. Talk to them directly, like a coach who knows them.
 - Realistic but pushing. Tie it to what they told you motivates them.
-- Only use facts from their journal, today's check-in and today's date. You do not have heart rate, workout logs or food logs yet, so never invent numbers or imply you've seen data you haven't.
+- Only use facts from their journal, today's check-in, today's planned session and today's date. You do not have heart rate, workout logs or food logs yet, so never invent numbers or imply you've seen data you haven't.
+- If you talk about today's training, it must match today's planned session exactly: only name lifts that are in it. If today is a rest day, don't tell them to lift. If there's no program yet, don't name specific lifts for today.
 - Never write or change MMA, boxing or grappling class content; those are coached in person. You can mention a class for timing.
 - Wellness coaching only: never diagnose injuries or medical conditions.
 - If something important is missing (like an upcoming event date), asking one question is often the best sentence.
@@ -72,6 +74,42 @@ function json(body: unknown, status = 200) {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
+}
+
+type PlanExercise = { name: string; kind: string; sets: number; reps: number; target: string };
+type PlanDay = { dayOfWeek: number; title: string; timing: string; exercises: PlanExercise[] };
+type ActiveProgram = { plan: { days: PlanDay[]; weeks: { week: number; focus: string }[] }; starts_on: string | null };
+type Goals = { class_days: number[] | null; class_time: string | null };
+
+// Today's session from the active program, in a few plain lines for the prompt.
+// Without this the coach guessed (e.g. talked about bench on a lower-body day).
+function sessionText(program: ActiveProgram | null, goals: Goals | null, date: string) {
+  const day = new Date(`${date}T12:00:00Z`);
+  const iso = ((day.getUTCDay() + 6) % 7) + 1; // 1 = Monday ... 7 = Sunday
+  const lines: string[] = [];
+  if (!program) {
+    lines.push("They don't have a training program yet.");
+  } else {
+    const start = program.starts_on ? new Date(`${program.starts_on}T12:00:00Z`) : null;
+    const days = start ? Math.round((day.getTime() - start.getTime()) / 86_400_000) : 0;
+    const week = Math.min(Math.max(Math.floor(days / 7) + 1, 1), 4);
+    const focus = program.plan.weeks?.find((w) => w.week === week)?.focus;
+    const today = program.plan.days?.find((d) => d.dayOfWeek === iso);
+    if (today) {
+      const exercises = today.exercises
+        .map((e) => `${e.name} (${e.sets} x ${e.kind === "conditioning" ? e.target : e.reps})`)
+        .join("; ");
+      lines.push(
+        `Today's planned session (week ${week} of 4${focus ? `, ${focus}` : ""}): "${today.title}", ${today.timing}. Exercises: ${exercises}.`,
+      );
+    } else {
+      lines.push(`Today is a rest day in their program (week ${week} of 4).`);
+    }
+  }
+  if (goals?.class_days?.includes(iso)) {
+    lines.push(`They have MMA / combat class today${goals.class_time ? ` (${goals.class_time})` : ""}.`);
+  }
+  return lines.join("\n");
 }
 
 Deno.serve(async (req) => {
@@ -130,6 +168,11 @@ Deno.serve(async (req) => {
   if (journalError) return json({ error: journalError.message }, 500);
   if (!journal?.completed_at) return json({ error: "Finish your journal first" }, 400);
 
+  const [{ data: program }, { data: goals }] = await Promise.all([
+    supabase.from("programs").select("plan, starts_on").eq("status", "active").maybeSingle(),
+    supabase.from("training_goals").select("class_days, class_time").maybeSingle(),
+  ]);
+
   const answers = journal.answers as Record<string, string>;
   const journalText = Object.entries(LABELS)
     .filter(([id]) => answers[id]?.trim())
@@ -157,7 +200,7 @@ Deno.serve(async (req) => {
       messages: [
         {
           role: "user",
-          content: `Today is ${weekday}, ${date}.\n\n${checkInText}\n\nWhat they told you in their onboarding journal:\n${journalText}\n\nWrite today's message.`,
+          content: `Today is ${weekday}, ${date}.\n\n${checkInText}\n\n${sessionText(program, goals, date)}\n\nWhat they told you in their onboarding journal:\n${journalText}\n\nWrite today's message.`,
         },
       ],
     });

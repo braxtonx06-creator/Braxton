@@ -23,7 +23,7 @@ export type ProgressData = {
   sessions: number; // all finished workouts
   avgSleep: number | null; // last 7 days of check-ins
   streak: number;
-  bodyWeight: number | null; // from the journal until weight logging exists
+  bodyWeight: number | null; // latest weigh-in, else what the journal says
   focuses: string[];
   week: { lifts: number; classes: number } | null;
 };
@@ -56,7 +56,7 @@ export async function loadProgress(): Promise<ProgressData> {
   const weekAgo = new Date();
   weekAgo.setDate(weekAgo.getDate() - 6);
 
-  const [baselines, workouts, checkIns, journal, programs, streak, goals] = await Promise.all([
+  const [baselines, workouts, checkIns, journal, programs, streak, goals, weighIn] = await Promise.all([
     supabase
       .from("baselines")
       .select("metric, name, value, unit, better, measured_on")
@@ -68,8 +68,9 @@ export async function loadProgress(): Promise<ProgressData> {
     loadProgramState(),
     loadCheckInStreak(),
     supabase.from("training_goals").select("focuses, lift_days, class_days").maybeSingle(),
+    supabase.from("body_weights").select("pounds").order("day", { ascending: false }).limit(1).maybeSingle(),
   ]);
-  for (const r of [baselines, workouts, checkIns, goals]) if (r.error) throw r.error;
+  for (const r of [baselines, workouts, checkIns, goals, weighIn]) if (r.error) throw r.error;
 
   const rows: Best[] = (baselines.data ?? []).map((b) => ({
     metric: b.metric,
@@ -117,7 +118,7 @@ export async function loadProgress(): Promise<ProgressData> {
     sessions: workouts.count ?? 0,
     avgSleep: sleeps.length ? sleeps.reduce((a, b) => a + b, 0) / sleeps.length : null,
     streak,
-    bodyWeight: bodyWeightFromText(journal.answers.numbers ?? ""),
+    bodyWeight: weighIn.data ? Number(weighIn.data.pounds) : bodyWeightFromText(journal.answers.numbers ?? ""),
     focuses: focuses.map((id) => FOCUSES.find((f) => f.id === id)?.label ?? id),
     week: goals.data ? { lifts: goals.data.lift_days?.length ?? 0, classes: goals.data.class_days?.length ?? 0 } : null,
   };

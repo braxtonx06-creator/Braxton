@@ -12,9 +12,12 @@ import { TrainingCard } from "@/components/TrainingCard";
 import { colors, fonts } from "@/components/theme";
 import { loadCheckInStreak, useTodayCheckIn } from "@/lib/checkIn";
 import { useCoachMessage } from "@/lib/coach";
+import { localDate } from "@/lib/dates";
+import { totalsOf, useTodayMeals } from "@/lib/food";
 import { useJournal } from "@/lib/journal";
 import { readinessFrom } from "@/lib/readiness";
 import { useTrainingSummary } from "@/lib/training";
+import { useWeights } from "@/lib/weight";
 
 const QUALITY = ["", "Terrible", "Poor", "Okay", "Good", "Great"];
 
@@ -25,6 +28,9 @@ export default function TodayScreen() {
   const checkIns = useTodayCheckIn();
   const training = useTrainingSummary();
   const avatar = useAvatar();
+  const { meals } = useTodayMeals();
+  const { weights } = useWeights(1);
+  const food = totalsOf(meals ?? []);
   const [skippedCheckIn, setSkippedCheckIn] = useState(false);
   const [editingCheckIn, setEditingCheckIn] = useState(false);
   const [showWhy, setShowWhy] = useState(false);
@@ -135,8 +141,18 @@ export default function TodayScreen() {
         <TrainingCard summary={training.summary} checkIn={checkIn} tint={readiness?.color ?? colors.accent} />
 
         <View style={styles.tiles}>
-          <Tile label="WEIGHT" value="—" note="Log it · soon" />
-          <Tile label="FOOD" value="—" note="Snap a meal · soon" />
+          <Tile
+            label="WEIGHT"
+            value={weights?.[0] ? String(weights[0].pounds) : "—"}
+            note={weights?.[0]?.day === localDate() ? "lb today" : "Log it"}
+            onPress={() => router.push("/weight")}
+          />
+          <Tile
+            label="FOOD"
+            value={meals?.length ? String(food.calories) : "—"}
+            note={meals?.length ? `kcal · ${Math.round(food.protein_g)}g protein` : "Snap a meal"}
+            onPress={() => router.push("/food")}
+          />
           <Tile
             label="SLEEP"
             value={checkIn ? `${checkIn.sleepHours}h` : "—"}
